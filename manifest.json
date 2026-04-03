@@ -1,0 +1,26 @@
+{
+  "id": "auth",
+  "version": "1.0",
+  "name": "Authentication API",
+  "description": "",
+  "authors": [
+    {
+      "name": "Pierre",
+      "email": "pierre@growv-mail.org"
+    }
+  ],
+  "requires": {
+    "wf": ">=0.1.0",
+    "additives": {},
+    "packages": [
+      "argon2_cffi",
+      "itsdangerous",
+      "authlib",
+      "pydantic[email]"
+    ]
+  },
+  "type": "default",
+  "frontend": {
+    "type": "none"
+  }
+}
