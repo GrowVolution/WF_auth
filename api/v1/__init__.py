@@ -62,7 +62,7 @@ def setup(a: "Additive", f: "Fluid"):
         ui_request as reset_page,
         reset_password
     )
-    v1.post("/users/reset/request")(f.limit("20/hour")(reset_request))
+    v1.post("/users/reset/request")(f.limit("2/hour")(reset_request))
     v1.get("/users/reset")(reset_page)
     v1.post("/users/reset")(reset_password)
 

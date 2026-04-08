@@ -30,6 +30,7 @@ _msg_keys = [
     "The part after the @-sign is not valid. It should have a period.",
     "Unknown email",
     "No reset handler",
+    "Too many requests",
 
 ]
 
@@ -151,6 +152,9 @@ translations = {
         },
         _msg_keys[27]: {
             ("one",): "Funktion zum Zurücksetzen fehlt"
+        },
+        _msg_keys[28]: {
+            ("one",): "Zu viele Anfragen"
         },
 
     }
