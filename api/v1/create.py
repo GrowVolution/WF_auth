@@ -5,6 +5,8 @@ from webfluid.core.ext import db, events
 from webfluid.core.context import FluidContext
 from webfluid.core.constants import DEBUG
 from webfluid.utils.logging import factory as log_factory
+from webfluid.extensions.utils.babel import get_locale
+from typing import Coroutine, Optional
 
 from ...models.user import User, Role, Permission
 from ...schemas.v1 import CreateUser, InitialSetup
@@ -33,23 +35,28 @@ async def _create_user(create: CreateUser, e) -> User:
     ), True)
 
 
-async def _make_response(request: Request, user: User) -> JSONResponse:
+async def _make_response_and_trigger(
+        request: Request, user: User
+) -> tuple[JSONResponse, Optional[Coroutine]]:
     from ... import additive
 
     base_url = str(request.base_url).rstrip("/")
     token = TokenService.generate_token({ "user_id": user.id }, "confirm")
     try:
-        await events.trigger(additive.unique_name("user_registered"), {
+        trigger = events.trigger(additive.unique_name("user_registered"), {
             "type": "REGISTRATION",
             "username": user.username,
             "email": user.email,
-            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
+            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
+            "locale": get_locale()
         })
     except ValueError:
         log_factory.warning(f"[{additive.name}] No confirmation handler")
+        trigger = None
 
+    request.session.clear()
     request.session["user_id"] = user.id
-    return TokenService.csrf_response(request)
+    return TokenService.csrf_response(request), trigger
 
 
 async def setup_request(request: Request, setup: InitialSetup,
@@ -105,7 +112,10 @@ async def setup_request(request: Request, setup: InitialSetup,
         ), True)
         user.roles.append(role)
 
-        return await _make_response(request, user)
+        response, trigger = await _make_response_and_trigger(request, user)
+
+    if trigger: await trigger
+    return response
 
 
 async def setup_available(user = UserService.current_user):
@@ -152,4 +162,7 @@ async def default_request(request: Request, create: CreateUser):
 
     async with db.async_executor(model=User) as e:
         user = await _create_user(create, e)
-        return await _make_response(request, user)
+        response, trigger = await _make_response_and_trigger(request, user)
+
+    if trigger: await trigger
+    return response

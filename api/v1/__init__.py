@@ -2,12 +2,12 @@ from fastapi import APIRouter
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from webfluid import Additive
+    from webfluid import Additive, Fluid
 
 v1 = APIRouter(prefix="/v1")
 
 
-def setup(a: "Additive"):
+def setup(a: "Additive", f: "Fluid"):
     from .create import (
         setup_request as initial_setup,
         setup_available,
@@ -56,6 +56,15 @@ def setup(a: "Additive"):
     )
     v1.get("/users/confirm")(confirm_user)
     v1.get("/users/confirm/resend")(resend_confirmation)
+
+    from .reset import (
+        reset_request,
+        ui_request as reset_page,
+        reset_password
+    )
+    v1.post("/users/reset/request")(f.limit("20/hour")(reset_request))
+    v1.get("/users/reset")(reset_page)
+    v1.post("/users/reset")(reset_password)
 
     from .update import handle_request as update_user
     v1.post("/users/update")(update_user)

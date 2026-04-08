@@ -11,6 +11,8 @@ class DefaultConfig:
     AUTH_SECRET: str
 
     AUTH_TOKEN_MAX_AGE = 3600
+    AUTH_CSRF_COOKIE_NAME = "csrf_token"
+    AUTH_CSRF_COOKIE_SECURE = True
 
     AUTH_HASHER_TIME_COST = 3
     AUTH_HASHER_MEMORY_COST = 65536

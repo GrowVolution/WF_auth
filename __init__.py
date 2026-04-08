@@ -1,11 +1,10 @@
 from webfluid import Additive, Fluid
-from webfluid.core.ext import babel, db, scheduler
-from webfluid.core.constants import EXT_MAIL, EXT_SCHEDULING
-from webfluid.exceptions import AdditiveException
+from webfluid.core.ext import babel
 
 additive = Additive(
     __name__,
 	required_extensions=[
+        "scheduling",
 		"sqlalchemy",
 		"babel",
         "events"
@@ -19,7 +18,9 @@ def before_enable(fluid: Fluid):
 
     TokenService.setup(
         fluid.config["AUTH_SECRET"],
-        fluid.config.get("AUTH_TOKEN_MAX_AGE", 3600)
+        fluid.config.get("AUTH_TOKEN_MAX_AGE", 3600),
+        fluid.config.get("AUTH_CSRF_COOKIE_NAME", "csrf_token"),
+        fluid.config.get("AUTH_CSRF_COOKIE_SECURE", True)
     )
 
     HashService.setup(
@@ -44,7 +45,7 @@ def before_enable(fluid: Fluid):
 
     from .api import health, setup_v1
     additive.api.get("/health")(health)
-    setup_v1(additive)
+    setup_v1(additive, fluid)
 
 
     from .events import setup

@@ -31,6 +31,7 @@ async def default_request(request: Request, login: LoginUser,
         except VerifyMismatchError:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        request.session.clear()
         request.session["user_id"] = user.id
         return TokenService.csrf_response(request)
 
@@ -93,6 +94,7 @@ async def callback_request(request: Request, provider: str, userinfo = OAuthServ
         else:
             user = identity.user
 
+        request.session.clear()
         request.session["user_id"] = user.id
         token_res = TokenService.csrf_response(request)
         return await OAuthService.authorize_response(

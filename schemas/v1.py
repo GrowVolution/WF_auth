@@ -50,3 +50,12 @@ class UserResponse(UserSchema):
     id: int
     email: Optional[EmailStr]
     confirmed: bool
+
+
+class ResetRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPassword(BaseModel):
+    password: str
+    _validate_password = field_validator("password")(validate_password)

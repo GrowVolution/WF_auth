@@ -90,8 +90,8 @@ class OAuthService:
             )
 
         if csrf is not None:
-            for cookie in csrf.raw_headers:
-                if cookie[0].lower() == b"set-cookie":
-                    response.raw_headers.append(cookie)
+            for header in csrf.raw_headers:
+                if header[0].lower() == b"set-cookie":
+                    response.raw_headers.append(header)
 
         return response

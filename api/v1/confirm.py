@@ -2,21 +2,57 @@ from fastapi import Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 from webfluid.core.ext import db, events
+from webfluid.extensions.utils.babel import get_locale
 from sqlalchemy import select
+from typing import Callable
 
 from ...models.user import User
 from ...services import TokenService, UserService
 
 
+async def _confirmation_page() -> HTMLResponse:
+    from ... import additive
+    html = await events.request(
+        additive.unique_name("confirmation_page"),
+        get_locale()
+    )
+    return HTMLResponse(html)
+
+
+async def _invalid_page() -> HTMLResponse:
+    from ... import additive
+    html = await events.request(
+        additive.unique_name("invalid_page"),
+        get_locale()
+    )
+    return HTMLResponse(html)
+
+
+async def _render_or_raise(render: Callable, exc: HTTPException) -> HTMLResponse:
+    try: return await render()
+    except ValueError: raise exc
+
+
 async def default_request(request: Request):
     token = request.query_params.get("token")
     if not token:
-        raise HTTPException(status_code=400, detail="Missing token")
+        return await _render_or_raise(
+            _invalid_page,
+            HTTPException(status_code=400, detail="Missing token")
+        )
 
-    token_data = TokenService.validate_token(token, "confirm")
+    try: token_data = await TokenService.validate_token(token, "confirm")
+    except HTTPException as e:
+        if e.detail == "Token expired":
+            return await _render_or_raise(_confirmation_page, e)
+        return await _render_or_raise(_invalid_page, e)
+
     user_id = token_data.get("user_id")
     if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid token")
+        return await _render_or_raise(
+            _invalid_page,
+            HTTPException(status_code=400, detail="Invalid token")
+        )
 
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).where(
@@ -24,24 +60,23 @@ async def default_request(request: Request):
         ).limit(1))
         user = users.first()
         if not user:
-            raise HTTPException(status_code=400, detail="Unknown user")
+            return await _render_or_raise(
+                _invalid_page,
+                HTTPException(status_code=400, detail="Unknown user")
+            )
 
         elif user.confirmed:
             new_mail = token_data.get("email")
             if not new_mail or new_mail == user.email:
-                raise HTTPException(status_code=400, detail="Already confirmed")
+                return await _render_or_raise(
+                    _confirmation_page,
+                    HTTPException(status_code=400, detail="Already confirmed")
+                )
             user.email = new_mail
 
         user.confirmed = True
-        try:
-            from ... import additive
-            html = await events.query(
-                additive.unique_name("confirmation_page")
-            )
-            return HTMLResponse(html)
-
-        except ValueError:
-            return { "status": "ok" }
+        try: return await _confirmation_page()
+        except ValueError: return { "status": "ok" }
 
 
 async def resend_request(request: Request, user = UserService.require_user):
@@ -66,7 +101,8 @@ async def resend_request(request: Request, user = UserService.require_user):
             "type": msg_type,
             "username": user.username,
             "email": user.email,
-            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
+            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
+            "locale": get_locale()
         })
     except ValueError:
         raise HTTPException(status_code=400, detail="No confirmation handler")

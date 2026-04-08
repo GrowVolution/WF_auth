@@ -1,6 +1,7 @@
 from fastapi import Request
 from fastapi.exceptions import HTTPException
 from webfluid.core.ext import db, events
+from webfluid.extensions.utils.babel import get_locale
 from sqlalchemy import select
 
 from ...models.user import User
@@ -43,7 +44,8 @@ async def handle_request(
                 "type": "CHANGE",
                 "username": user.username,
                 "email": user.email,
-                "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
+                "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
+                "locale": get_locale()
             })
             request.session["pending_email"] = update.email
 

@@ -18,8 +18,18 @@ _msg_keys = [
     "Not logged in",
     "Already connected",
     "Invalid token",
+    "Missing token",
+    "Invalid CSRF token",
     "Missing CSRF token",
     "CSRF mismatch",
+    "Unknown user",
+    "Already confirmed",
+    "No confirmation handler",
+    "Username already taken",
+    "Unknown error",
+    "The part after the @-sign is not valid. It should have a period.",
+    "Unknown email",
+    "No reset handler",
 
 ]
 
@@ -47,43 +57,6 @@ translations = {
         _msg_keys[5]: {
             ("one",): "Password must contain at least %(num)i special character.",
             ("other",): "Password must contain at least %(num)i special characters."
-        },
-
-        _msg_keys[6]: {
-            ("one",): "Confirm your email address"
-        },
-        _msg_keys[7]: {
-            ("one",): "Welcome %(user)s!\n\n"
-                      "To verify it's you, please confirm your email address by clicking the link below:\n\n"
-                      "%(link)s\n\n"
-                      "If you did not create an account, please ignore this email."
-        },
-        _msg_keys[8]: {
-            ("one",): "Hey %(user)s!<br><br>"
-                      "To verify it's you, please confirm your email address by clicking the button below:"
-        },
-        _msg_keys[9]: {
-            ("one",): "If the button does not work, you can also confirm your email address using the link below:<br><br>"
-                      "<a href='%(link)s'>%(link)s</a><br><br>"
-                      "If you did not create an account, please ignore this email."
-        },
-        _msg_keys[10]: {
-            ("one",): "Hey %(user)s!\n\n"
-                      "To change your email address, we need to confirm this one by clicking the link below:\n\n"
-                      "%(link)s\n\n"
-                      "If you did not request to change your email address, please ignore this email."
-        },
-        _msg_keys[11]: {
-            ("one",): "Hey %(user)s!<br><br>"
-                      "To change your email address, we need to confirm this one by clicking the button below:"
-        },
-        _msg_keys[12]: {
-            ("one",): "If the button does not work, you can also change your email address using the link below:<br><br>"
-                      "<a href='%(link)s'>%(link)s</a><br><br>"
-                      "If you did not request to change your email address, please ignore this email."
-        },
-        _msg_keys[13]: {
-            ("one",): "Confirm"
         },
 
     },
@@ -114,77 +87,70 @@ translations = {
         },
 
         _msg_keys[6]: {
-            ("one",): "Bestätige deine E-Mail-Adresse"
-        },
-        _msg_keys[7]: {
-            ("one",): "Willkommen %(user)s!\n\n"
-                      "Um sicherzustellen, dass du es bist, bestätige bitte deine E-Mail-Adresse, indem du auf den Link unten klickst:\n\n"
-                      "%(link)s\n\n"
-                      "Wenn du kein Konto angelegt hast, kannst du diese E-Mail ignorieren."
-        },
-        _msg_keys[8]: {
-            ("one",): "Willkommen %(user)s!<br><br>"
-                      "Um sicherzustellen, dass du es bist, bestätige bitte deine E-Mail-Adresse, indem du auf folgenden Button klickst:"
-        },
-        _msg_keys[9]: {
-            ("one",): "Falls der Button nicht funktioniert, kannst du deine E-Mail-Adresse auch über den Link unten bestätigen:<br><br>"
-                      "<a href='%(link)s'>%(link)s</a><br><br>"
-                      "Wenn du kein Konto angelegt hast, kannst du diese E-Mail ignorieren."
-        },
-        _msg_keys[10]: {
-            ("one",): "Hey %(user)s!\n\n"
-                      "Um deine E-Mail-Adresse zu ändern, musst du diese hier kurz bestätigen, indem du auf den Link unten klickst:\n\n"
-                      "%(link)s\n\n"
-                      "Wenn diese Anfrage nicht von dir kommt, kannst du diese E-Mail ignorieren."
-        },
-        _msg_keys[11]: {
-            ("one",): "Hey %(user)s!<br><br>"
-                      "Um deine E-Mail-Adresse zu ändern, musst du diese hier kurz bestätigen, indem du auf folgenden Button klickst:"
-        },
-        _msg_keys[12]: {
-            ("one",): "Falls der Button nicht funktioniert, kannst du deine E-Mail-Adresse auch über den Link unten bestätigen:<br><br>"
-                      "<a href='%(link)s'>%(link)s</a><br><br>"
-                      "Wenn diese Anfrage nicht von dir kommt, kannst du diese E-Mail ignorieren."
-        },
-        _msg_keys[13]: {
-            ("one",): "Bestätigen"
-        },
-
-        _msg_keys[14]: {
             ("one",): "Benutzername oder E-Mail-Adresse bereits vergeben"
         },
-        _msg_keys[15]: {
+        _msg_keys[7]: {
             ("one",): "Nicht erlaubt im Produktivbetrieb"
         },
-        _msg_keys[16]: {
+        _msg_keys[8]: {
             ("one",): "Initiale Einrichtung bereits abgeschlossen"
         },
-        _msg_keys[17]: {
+        _msg_keys[9]: {
             ("one",): "Rollen dürfen in der Standardregistrierung nicht verwendet werden"
         },
-        _msg_keys[18]: {
+        _msg_keys[10]: {
             ("one",): "Bereits eingeloggt"
         },
-        _msg_keys[19]: {
+        _msg_keys[11]: {
             ("one",): "Falsche Anmeldedaten"
         },
-        _msg_keys[20]: {
+        _msg_keys[12]: {
             ("one",): "Login nur über Provider möglich"
         },
-        _msg_keys[21]: {
+        _msg_keys[13]: {
             ("one",): "Nicht eingeloggt"
         },
-        _msg_keys[22]: {
+        _msg_keys[14]: {
             ("one",): "Bereits verbunden"
         },
-        _msg_keys[23]: {
+        _msg_keys[15]: {
             ("one",): "Ungültiger Token"
         },
-        _msg_keys[24]: {
+        _msg_keys[16]: {
+            ("one",): "Token fehlt"
+        },
+        _msg_keys[17]: {
+            ("one",): "Ungültiger CSRF-Token"
+        },
+        _msg_keys[18]: {
             ("one",): "CSRF-Token fehlt"
         },
-        _msg_keys[25]: {
+        _msg_keys[19]: {
             ("one",): "Keine CSRF-Übereinstimmung"
+        },
+        _msg_keys[20]: {
+            ("one",): "Unbekannter Benutzer"
+        },
+        _msg_keys[21]: {
+            ("one",): "Bereits bestätigt"
+        },
+        _msg_keys[22]: {
+            ("one",): "Bestätigungsfunktion fehlt"
+        },
+        _msg_keys[23]: {
+            ("one",): "Benutzername bereits vergeben"
+        },
+        _msg_keys[24]: {
+            ("one",): "Unbekannter Fehler"
+        },
+        _msg_keys[25]: {
+            ("one",): "Der Abschnitt nach dem @ ist ungültig. Er sollte einen Punkt enthalten."
+        },
+        _msg_keys[26]: {
+            ("one",): "Unbekannte E-Mail-Adresse"
+        },
+        _msg_keys[27]: {
+            ("one",): "Funktion zum Zurücksetzen fehlt"
         },
 
     }
