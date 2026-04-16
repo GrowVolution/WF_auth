@@ -11,3 +11,4 @@ def setup(a: "Additive"):
 
     from .unconfirm import handle_event as unconfirm_event
     events.event(a.unique_name("unconfirm_user"))(unconfirm_event)
+    events.create_signal(a.unique_name("user_confirmed"))

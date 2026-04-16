@@ -23,8 +23,8 @@ class CreateUser(UserSchema):
 
 
 class UpdateUser(UserSchema):
-    current_password: str
-    new_password: Optional[str]
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
 
     _validate_username = field_validator("username")(validate_username)
 
@@ -48,8 +48,9 @@ class LoginUser(BaseModel):
 
 class UserResponse(UserSchema):
     id: int
-    email: Optional[EmailStr]
+    email: Optional[EmailStr] = None
     confirmed: bool
+    is_admin: bool
 
 
 class ResetRequest(BaseModel):
@@ -59,3 +60,11 @@ class ResetRequest(BaseModel):
 class ResetPassword(BaseModel):
     password: str
     _validate_password = field_validator("password")(validate_password)
+
+
+class AuthorizeRequest(BaseModel):
+    action: str
+    uuid: str
+
+    roles: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)

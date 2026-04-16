@@ -74,7 +74,11 @@ async def default_request(request: Request):
                 )
             user.email = new_mail
 
-        user.confirmed = True
+        else:
+            from ... import additive
+            user.confirmed = True
+            await events.trigger(additive.unique_name("user_confirmed"), user.id)
+
         try: return await _confirmation_page()
         except ValueError: return { "status": "ok" }
 

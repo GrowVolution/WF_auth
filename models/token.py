@@ -5,8 +5,13 @@ from datetime import datetime
 from webfluid.core.ext import db
 
 
+def _unique_name(name: str):
+    from .. import additive
+    return additive.unique_name(name)
+
+
 class ExpiredToken(db.Model):
-    __tablename__ = "expired_tokens"
+    __tablename__ = _unique_name("expired_tokens")
     id: Mapped[int] = mapped_column(primary_key=True)
     token: Mapped[str] = mapped_column(unique=True)
     created_at: Mapped[datetime] = mapped_column(

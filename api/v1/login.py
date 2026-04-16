@@ -36,7 +36,7 @@ async def default_request(request: Request, login: LoginUser,
         return TokenService.csrf_response(request)
 
 
-async def login_available(user = UserService.current_user):
+async def login_available(user = UserService.require_user):
     return { "available": user is None }
 
 
@@ -69,7 +69,6 @@ async def callback_request(request: Request, provider: str, userinfo = OAuthServ
                     or userinfo.get("login")
                     or f"{provider}_user"
             )
-            email = userinfo.get("email")
 
             username = base_username
             i = 1
@@ -81,6 +80,13 @@ async def callback_request(request: Request, provider: str, userinfo = OAuthServ
                 if not exists.first(): break
                 username = f"{base_username}_{i}"
                 i += 1
+
+            email = userinfo.get("email")
+            if email:
+                exists = await e.exec(select(User).where(
+                    User.email == email
+                ))
+                if exists.first(): email = None
 
             user = await e.insert(User(
                 username=username,
@@ -94,9 +100,10 @@ async def callback_request(request: Request, provider: str, userinfo = OAuthServ
         else:
             user = identity.user
 
+        device = request.session.pop("device", "mobile")
         request.session.clear()
         request.session["user_id"] = user.id
         token_res = TokenService.csrf_response(request)
         return await OAuthService.authorize_response(
-            request, provider, token_res
+            request, provider, device, token_res
         )

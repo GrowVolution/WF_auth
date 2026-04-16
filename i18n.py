@@ -31,6 +31,10 @@ _msg_keys = [
     "Unknown email",
     "No reset handler",
     "Too many requests",
+    "No roles specified",
+    "No permissions specified",
+    "Missing current password",
+    "Email already taken",
 
 ]
 
@@ -155,6 +159,18 @@ translations = {
         },
         _msg_keys[28]: {
             ("one",): "Zu viele Anfragen"
+        },
+        _msg_keys[29]: {
+            ("one",): "Keine Rollen angegeben"
+        },
+        _msg_keys[30]: {
+            ("one",): "Keine Berechtigungen angegeben"
+        },
+        _msg_keys[31]: {
+            ("one",): "Aktuelles Passwort fehlt"
+        },
+        _msg_keys[32]: {
+            ("one",): "E-Mail-Adresse bereits vergeben"
         },
 
     }

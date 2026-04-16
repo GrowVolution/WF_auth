@@ -10,7 +10,7 @@
     }
   ],
   "requires": {
-    "wf": ">=0.1.0",
+    "wf": ">=1.0.0",
     "additives": {},
     "packages": [
       "argon2_cffi",

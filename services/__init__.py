@@ -4,5 +4,5 @@ from .hashing import HashService
 from .user import UserService
 
 __all__ = [
-    "OAuthService", "TokenService", "HashService", "UserService",
+    "OAuthService", "TokenService", "HashService", "UserService"
 ]

@@ -12,10 +12,14 @@ from ...services import UserService, HashService, TokenService
 async def handle_request(
         request: Request,
         update: UpdateUser,
-        user = UserService.require_user
+        user: User = UserService.require_user
 ):
-    if not HashService.verify(user.psw_hash, update.current_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.psw_hash:
+        if update.new_password and not update.current_password:
+            raise HTTPException(status_code=400, detail="Missing current password")
+
+        elif update.current_password and not HashService.verify(user.psw_hash, update.current_password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if user.username != update.username:
         async with db.async_executor(model=User) as e:
@@ -31,23 +35,41 @@ async def handle_request(
         user.psw_hash = HashService.hash(update.new_password)
 
     if user.email != update.email:
-        from ... import additive
+        async with db.async_executor(model=User) as e:
+            users = await e.exec(select(User).where(
+                User.email == update.email
+            ).limit(1))
+            if users.first():
+                raise HTTPException(status_code=400, detail="Email already taken")
 
+        from ... import additive
         base_url = str(request.base_url).rstrip("/")
-        token = TokenService.generate_token({
-            "user_id": user.id,
-            "email": update.email
-        }, "confirm")
 
         try:
-            await events.trigger(additive.unique_name("user_changed_mail"), {
-                "type": "CHANGE",
+            if user.email:
+                token = TokenService.generate_token({
+                    "user_id": user.id,
+                    "email": update.email
+                }, "confirm")
+                event = "user_changed_mail"
+                event_type = "CHANGE"
+                request.session["pending_email"] = update.email
+
+            else:
+                token = TokenService.generate_token({
+                    "user_id": user.id
+                }, "confirm")
+                event = "user_registered"
+                event_type = "REGISTRATION"
+                user.email = update.email
+
+            await events.trigger(additive.unique_name(event), {
+                "type": event_type,
                 "username": user.username,
-                "email": user.email,
+                "email": update.email,
                 "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
                 "locale": get_locale()
             })
-            request.session["pending_email"] = update.email
 
         except ValueError:
             user.email = update.email

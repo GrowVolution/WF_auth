@@ -38,4 +38,5 @@ async def callback_request(
             provider=provider
         ))
 
-        return await OAuthService.authorize_response(request, provider)
+        device = request.session.pop("device", "mobile")
+        return await OAuthService.authorize_response(request, provider, device)

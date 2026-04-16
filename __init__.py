@@ -42,6 +42,9 @@ def before_enable(fluid: Fluid):
         Role.set_bind(bind)
         Permission.set_bind(bind)
 
+        from .models.token import ExpiredToken
+        ExpiredToken.set_bind(bind)
+
 
     from .api import health, setup_v1
     additive.api.get("/health")(health)

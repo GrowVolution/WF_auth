@@ -5,21 +5,27 @@ from typing import Optional
 
 from webfluid.core.ext import db
 
+
+def _unique_name(name: str):
+    from .. import additive
+    return additive.unique_name(name)
+
+
 user_roles = Table(
-    "user_roles", db.Model.metadata,
-    Column("user_id", Integer, ForeignKey("users.id")),
-    Column("role_id", Integer, ForeignKey("roles.id"))
+    _unique_name("user_roles"), db.Model.metadata,
+    Column("user_id", Integer, ForeignKey(f"{_unique_name('users')}.id")),
+    Column("role_id", Integer, ForeignKey(f"{_unique_name('roles')}.id"))
 )
 
 role_permissions = Table(
-    "role_permissions", db.Model.metadata,
-    Column("role_id", Integer, ForeignKey("roles.id")),
-    Column("permission_id", Integer, ForeignKey("permissions.id"))
+    _unique_name("role_permissions"), db.Model.metadata,
+    Column("role_id", Integer, ForeignKey(f"{_unique_name('roles')}.id")),
+    Column("permission_id", Integer, ForeignKey(f"{_unique_name('permissions')}.id"))
 )
 
 
 class User(db.Model):
-    __tablename__ = "users"
+    __tablename__ = _unique_name("users")
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -51,11 +57,11 @@ class User(db.Model):
 
 
 class Identity(db.Model):
-    __tablename__ = "identities"
+    __tablename__ = _unique_name("identities")
     __table_args__ = (UniqueConstraint("sub", "provider"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey(f"{_unique_name('users')}.id"))
 
     sub: Mapped[str]
     provider: Mapped[str]
@@ -72,7 +78,7 @@ class Identity(db.Model):
 
 
 class Role(db.Model):
-    __tablename__ = "roles"
+    __tablename__ = _unique_name("roles")
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(unique=True)
@@ -96,7 +102,7 @@ class Role(db.Model):
 
 
 class Permission(db.Model):
-    __tablename__ = "permissions"
+    __tablename__ = _unique_name("permissions")
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(unique=True)

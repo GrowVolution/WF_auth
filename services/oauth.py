@@ -69,11 +69,9 @@ class OAuthService:
 
     @classmethod
     async def authorize_response(
-            cls, request: Request, provider: str,
+            cls, request: Request, provider: str, device: str,
             csrf: Optional[JSONResponse] = None
     ):
-        device = request.session.pop("device", "mobile")
-
         if device == "desktop":
             from .. import additive
             response = HTMLResponse(

@@ -25,7 +25,7 @@ def setup(a: "Additive", f: "Fluid"):
         oauth_request as oauth_login,
         callback_request as oauth_callback
     )
-    v1.get("/users/login")(login_available)
+    v1.post("/users/login/available")(login_available)
     v1.post("/users/login")(login_user)
     v1.get("/{provider}/login")(oauth_login)
     v1.api_route(
@@ -55,7 +55,7 @@ def setup(a: "Additive", f: "Fluid"):
         resend_request as resend_confirmation
     )
     v1.get("/users/confirm")(confirm_user)
-    v1.get("/users/confirm/resend")(resend_confirmation)
+    v1.post("/users/confirm/resend")(f.limit("2/hour")(resend_confirmation))
 
     from .reset import (
         reset_request,
@@ -66,7 +66,32 @@ def setup(a: "Additive", f: "Fluid"):
     v1.get("/users/reset")(reset_page)
     v1.post("/users/reset")(reset_password)
 
+    from .user import (
+        available_request as user_available,
+        get_request as get_user,
+        delete_request as delete_user
+    )
+    from ...schemas.v1 import UserResponse
+    v1.get("/users/me/available")(user_available)
+    v1.get("/users/me", response_model=UserResponse)(get_user)
+    v1.delete("/users/me")(delete_user)
+
     from .update import handle_request as update_user
-    v1.post("/users/update")(update_user)
+    v1.patch("/users/me")(update_user)
+
+    from .authorize import (
+        default_request as authorize_user,
+        admin_request as authorize_admin,
+        roles_request as authorize_roles,
+        any_role_request as authorize_any_role,
+        permissions_request as authorize_permissions,
+        any_permission_request as authorize_any_permission
+    )
+    v1.post("/authorize/user")(authorize_user)
+    v1.post("/authorize/admin")(authorize_admin)
+    v1.post("/authorize/roles")(authorize_roles)
+    v1.post("/authorize/any-role")(authorize_any_role)
+    v1.post("/authorize/permissions")(authorize_permissions)
+    v1.post("/authorize/any-permission")(authorize_any_permission)
 
     a.api.include_router(v1)
