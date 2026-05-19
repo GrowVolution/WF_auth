@@ -33,7 +33,7 @@ class UserService:
 
     @classmethod
     def _current_user(cls) -> Callable:
-        async def _wrapped(
+        async def wrapped(
                 request: Request
         ) -> AsyncGenerator[Optional["User"]]:
             if "user_id" not in request.session:
@@ -48,11 +48,11 @@ class UserService:
                     )
                 )
                 yield results.first()
-        return _wrapped
+        return wrapped
 
     @classmethod
     def _require_user(cls) -> Callable:
-        async def _wrapped(
+        async def wrapped(
                 request: Request,
                 user: "User" = cls.current_user,
                 _ = cls._TokenService.csrf_protect
@@ -65,11 +65,11 @@ class UserService:
                 request.session.pop("pending_email")
 
             yield user
-        return _wrapped
+        return wrapped
 
     @classmethod
     def _require_admin(cls) -> Callable:
-        async def _wrapped(
+        async def wrapped(
                 user: "User" = cls.require_user
         ) -> AsyncGenerator[Optional["User"]]:
             for role in user.roles:
@@ -77,7 +77,7 @@ class UserService:
                     yield user
                     return
             raise HTTPException(status_code=403, detail="Not authorized")
-        return _wrapped
+        return wrapped
 
     @classmethod
     def _require_roles_v1(cls) -> Callable:

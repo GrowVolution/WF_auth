@@ -64,7 +64,7 @@ class ResetPassword(BaseModel):
 
 class AuthorizeRequest(BaseModel):
     action: str
-    uuid: str
+    action_id: str
 
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
