@@ -69,15 +69,14 @@ def setup(a: "Additive", f: "Fluid"):
     from .user import (
         available_request as user_available,
         get_request as get_user,
+        update_request as update_user,
         delete_request as delete_user
     )
     from ...schemas.v1 import UserResponse
     v1.get("/users/me/available")(user_available)
     v1.get("/users/me", response_model=UserResponse)(get_user)
-    v1.delete("/users/me")(delete_user)
-
-    from .update import handle_request as update_user
     v1.patch("/users/me")(update_user)
+    v1.delete("/users/me")(delete_user)
 
     from .authorize import (
         default_request as authorize_user,
