@@ -4,7 +4,8 @@ from webfluid.exceptions import AdditiveException
 from secrets import token_hex
 import os
 
-from ._my_config import MyConfig
+try: from ._my_config import MyConfig
+except ImportError: MyConfig = object
 
 
 class DefaultConfig:
