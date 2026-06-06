@@ -3,7 +3,7 @@ from webfluid.core.ext import security as s
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from webfluid.extensions.security.models.user import User
+    from webfluid.extensions.security.models import User
 
 
 async def default_request(

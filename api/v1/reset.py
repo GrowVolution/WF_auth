@@ -3,7 +3,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 from webfluid.core.ext import db, events, security as s
 from webfluid.extensions.babel.utils import get_locale
-from webfluid.extensions.security.models.user import User
+from webfluid.extensions.security.models import User
 from sqlalchemy import select
 from typing import Callable
 

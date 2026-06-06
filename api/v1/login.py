@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException
 from webfluid.core.ext import db, security as s
 from sqlalchemy import select
-from webfluid.extensions.security.models.user import (
+from webfluid.extensions.security.models import (
     User, Identity
 )
 

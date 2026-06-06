@@ -5,7 +5,7 @@ from webfluid.core.ext import db, events, security as s
 from webfluid.core.constants import DEBUG
 from webfluid.utils.logging import factory as log_factory
 from webfluid.extensions.babel.utils import get_locale
-from webfluid.extensions.security.models.user import (
+from webfluid.extensions.security.models import (
     User, Role, Permission
 )
 from typing import Optional

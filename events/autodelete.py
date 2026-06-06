@@ -1,5 +1,5 @@
 from webfluid.core.ext import db
-from webfluid.extensions.security.models.user import User
+from webfluid.extensions.security.models import User
 from sqlalchemy import select
 from datetime import timedelta
 
