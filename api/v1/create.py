@@ -1,16 +1,16 @@
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, or_
-from webfluid.core.ext import db, events
-from webfluid.core.context import FluidContext
+from webfluid.core.ext import db, events, security as s
 from webfluid.core.constants import DEBUG
 from webfluid.utils.logging import factory as log_factory
-from webfluid.extensions.utils.babel import get_locale
-from typing import Coroutine, Optional
+from webfluid.extensions.babel.utils import get_locale
+from webfluid.extensions.security.models.user import (
+    User, Role, Permission
+)
+from typing import Optional
 
-from ...models.user import User, Role, Permission
 from ...schemas.v1 import CreateUser, InitialSetup
-from ...services import HashService, TokenService, UserService
 
 
 async def _create_user(create: CreateUser, e) -> User:
@@ -25,25 +25,22 @@ async def _create_user(create: CreateUser, e) -> User:
     if users.first():
         raise HTTPException(
             status_code=409,
-            detail="Username or email already taken"
+            detail="CREDENTIALS_TAKEN"
         )
 
     return await e.insert(User(
         username=create.username,
         email=create.email,
-        psw_hash=HashService.hash(create.password)
+        psw_hash=s.hash_service.hash(create.password)
     ), True)
 
 
-async def _make_response_and_trigger(
-        request: Request, user: User
-) -> tuple[JSONResponse, Optional[Coroutine]]:
+def _trigger(request: Request, user: User):
     from ... import additive
-
     base_url = str(request.base_url).rstrip("/")
-    token = TokenService.generate_token({ "user_id": user.id }, "confirm")
+    token = s.token_service.generate_token({ "user_id": user.id }, "confirm")
     try:
-        trigger = events.trigger(additive.unique_name("user_registered"), {
+        return events.trigger(additive.unique_name("user_created"), {
             "type": "REGISTRATION",
             "username": user.username,
             "email": user.email,
@@ -51,26 +48,32 @@ async def _make_response_and_trigger(
             "locale": get_locale()
         })
     except ValueError:
-        log_factory.warning(f"[{additive.name}] No confirmation handler")
-        trigger = None
+        log_factory.warning(f"[{additive.name}] No confirmation handler.")
 
+
+async def _make_response_and_trigger(
+        request: Request, user: User
+) -> JSONResponse:
+    _trigger(request, user)
     request.session.clear()
     request.session["user_id"] = user.id
-    return TokenService.csrf_response(request), trigger
+    return s.token_service.csrf_response(request)
 
 
-async def setup_request(request: Request, setup: InitialSetup,
-                        current_user = UserService.current_user):
+async def setup_request(
+        request: Request, setup: InitialSetup,
+        current_user: Optional[User] = s.user_service.current_user
+):
     if not DEBUG:
         raise HTTPException(
             status_code=403,
-            detail="Not allowed in production"
+            detail="PRODUCTION_MODE"
         )
 
     if current_user:
         raise HTTPException(
             status_code=403,
-            detail="Initial setup already performed"
+            detail="SETUP_ALREADY_PERFORMED"
         )
 
     async with db.async_executor(model=User) as e:
@@ -78,14 +81,14 @@ async def setup_request(request: Request, setup: InitialSetup,
         if users.first():
             raise HTTPException(
                 status_code=403,
-                detail="Initial setup already performed"
+                detail="SETUP_ALREADY_PERFORMED"
             )
 
         roles = await e.exec(select(Role).limit(1))
         if roles.first():
             raise HTTPException(
                 status_code=403,
-                detail="Initial setup already performed"
+                detail="SETUP_ALREADY_PERFORMED"
             )
 
         admin_role = setup.admin_role.name
@@ -108,26 +111,28 @@ async def setup_request(request: Request, setup: InitialSetup,
         user = await e.insert(User(
             userdata.username,
             userdata.email,
-            HashService.hash(userdata.password)
+            s.hash_service.hash(userdata.password)
         ), True)
         user.roles.append(role)
 
-        response, trigger = await _make_response_and_trigger(request, user)
+        response = await _make_response_and_trigger(request, user)
 
-    if trigger: await trigger
     return response
 
 
-async def setup_available(user = UserService.current_user):
+async def setup_available(user: Optional[User] = s.user_service.current_user):
     if not DEBUG or user: return { "available": False }
 
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).limit(1))
         roles = await e.exec(select(Role).limit(1))
-        return { "available": not (users.first() and roles.first()) }
+        return { "available": not (users.first() or roles.first()) }
 
 
-async def admin_request(create: CreateUser, _ = UserService.require_admin):
+async def admin_request(
+        request: Request, create: CreateUser,
+        _ = s.user_service.require_admin
+):
     async with db.async_executor(model=User) as e:
         user = await _create_user(create, e)
 
@@ -146,23 +151,20 @@ async def admin_request(create: CreateUser, _ = UserService.require_admin):
 
             user.roles.append(role)
 
-        ctx = FluidContext.current()
-        if ctx.fluid.config.get("AUTH_EMAIL_CONFIRM"):
-            user.confirmed = False
+        _trigger(request, user)
 
-        return { "status": "ok" }
+    return { "status": "ok" }
 
 
 async def default_request(request: Request, create: CreateUser):
     if create.roles:
         raise HTTPException(
             status_code=400,
-            detail="Roles are not allowed for default registration"
+            detail="ROLES_NOT_ALLOWED"
         )
 
     async with db.async_executor(model=User) as e:
         user = await _create_user(create, e)
-        response, trigger = await _make_response_and_trigger(request, user)
+        response = await _make_response_and_trigger(request, user)
 
-    if trigger: await trigger
     return response

@@ -1,28 +1,29 @@
 from fastapi import Request, HTTPException
-from webfluid.core.ext import db
+from webfluid.core.ext import db, security as s
+from webfluid.extensions.security.models.user import (
+    User, Identity
+)
 from sqlalchemy import select
-
-from ...models.user import User, Identity
-from ...services import UserService, OAuthService
 
 
 async def oauth_request(
         request: Request, provider: str,
-        client = OAuthService.client,
-        _ = UserService.require_user,
-        __ = OAuthService.prepare_session
+        client = s.oauth_service.client,
+        _ = s.user_service.require_user,
+        __ = s.oauth_service.prepare_session
 ):
     from ... import additive
     redirect_uri = request.url_for(
-        additive.unique_name("connect_callback"), provider=provider
+        additive.unique_name("connect_callback"),
+        provider=provider
     )
     return await client.authorize_redirect(request, redirect_uri)
 
 
 async def callback_request(
         request: Request, provider: str,
-        userinfo = OAuthService.userinfo,
-        current_user = UserService.require_user,
+        userinfo = s.oauth_service.userinfo,
+        current_user: User = s.user_service.require_user,
 ):
     async with db.async_executor(model=User) as e:
         identities = await e.exec(select(Identity).where(
@@ -30,7 +31,7 @@ async def callback_request(
             Identity.provider == provider
         ))
         if identities.first():
-            raise HTTPException(status_code=400, detail="Already connected")
+            raise HTTPException(status_code=400, detail="ALREADY_CONNECTED")
 
         await e.insert(Identity(
             user_id=current_user.id,
@@ -39,4 +40,4 @@ async def callback_request(
         ))
 
         device = request.session.pop("device", "mobile")
-        return await OAuthService.authorize_response(request, provider, device)
+        return s.oauth_service.authorize_response(request, provider, device)

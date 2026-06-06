@@ -1,13 +1,11 @@
 from fastapi import Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
-from webfluid.core.ext import db, events
-from webfluid.extensions.utils.babel import get_locale
+from webfluid.core.ext import db, events, security as s
+from webfluid.extensions.babel.utils import get_locale
+from webfluid.extensions.security.models.user import User
 from sqlalchemy import select
 from typing import Callable
-
-from ...models.user import User
-from ...services import TokenService, UserService
 
 
 async def _confirmation_page() -> HTMLResponse:
@@ -38,12 +36,12 @@ async def default_request(request: Request):
     if not token:
         return await _render_or_raise(
             _invalid_page,
-            HTTPException(status_code=400, detail="Missing token")
+            HTTPException(status_code=400, detail="MISSING_TOKEN")
         )
 
-    try: token_data = await TokenService.validate_token(token, "confirm")
+    try: token_data = await s.token_service.validate_token(token, "confirm")
     except HTTPException as e:
-        if e.detail == "Token expired":
+        if e.detail == "TOKEN_EXPIRED":
             return await _render_or_raise(_confirmation_page, e)
         return await _render_or_raise(_invalid_page, e)
 
@@ -51,7 +49,7 @@ async def default_request(request: Request):
     if not user_id:
         return await _render_or_raise(
             _invalid_page,
-            HTTPException(status_code=400, detail="Invalid token")
+            HTTPException(status_code=400, detail="INVALID_TOKEN")
         )
 
     async with db.async_executor(model=User) as e:
@@ -62,46 +60,50 @@ async def default_request(request: Request):
         if not user:
             return await _render_or_raise(
                 _invalid_page,
-                HTTPException(status_code=400, detail="Unknown user")
+                HTTPException(status_code=400, detail="UNKNOWN_USER")
             )
 
-        elif user.confirmed:
-            new_mail = token_data.get("email")
-            if not new_mail or new_mail == user.email:
+        elif user.email_verified:
+            if not user.pending_email:
                 return await _render_or_raise(
                     _confirmation_page,
-                    HTTPException(status_code=400, detail="Already confirmed")
+                    HTTPException(status_code=400, detail="ALREADY_CONFIRMED")
                 )
-            user.email = new_mail
+            user.email = user.pending_email
+            user.pending_email = None
 
         else:
             from ... import additive
-            user.confirmed = True
-            await events.trigger(additive.unique_name("user_confirmed"), user.id)
+            user.email_verified = True
+            events.trigger(additive.unique_name("user_confirmed"), user.id)
 
         try: return await _confirmation_page()
         except ValueError: return { "status": "ok" }
 
 
-async def resend_request(request: Request, user = UserService.require_user):
-    if user.confirmed:
-        new_mail = request.session.get("pending_email")
-        if not new_mail or new_mail == user.email:
-            raise HTTPException(status_code=400, detail="Already confirmed")
+async def resend_request(
+        request: Request,
+        user: User = s.user_service.require_user
+):
+    if not user.email:
+        raise HTTPException(status_code=400, detail="NO_EMAIL")
+
+    elif user.email_verified:
+        if not user.pending_email:
+            raise HTTPException(status_code=400, detail="ALREADY_CONFIRMED")
         msg_type = "CHANGE"
+
     else:
-        new_mail = None
         msg_type = "REGISTRATION"
 
     from ... import additive
     base_url = str(request.base_url).rstrip("/")
 
     token_data = { "user_id": user.id }
-    if new_mail: token_data["email"] = new_mail
-    token = TokenService.generate_token(token_data, "confirm")
+    token = s.token_service.generate_token(token_data, "confirm")
 
     try:
-        await events.trigger(additive.unique_name("resend_confirmation"), {
+        events.trigger(additive.unique_name("resend_confirmation"), {
             "type": msg_type,
             "username": user.username,
             "email": user.email,
@@ -109,6 +111,6 @@ async def resend_request(request: Request, user = UserService.require_user):
             "locale": get_locale()
         })
     except ValueError:
-        raise HTTPException(status_code=400, detail="No confirmation handler")
+        raise HTTPException(status_code=400, detail="NO_HANDLER")
 
     return { "status": "ok" }

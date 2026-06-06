@@ -1,14 +1,13 @@
 from fastapi import Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
-from webfluid.core.ext import db, events
-from webfluid.extensions.utils.babel import get_locale
+from webfluid.core.ext import db, events, security as s
+from webfluid.extensions.babel.utils import get_locale
+from webfluid.extensions.security.models.user import User
 from sqlalchemy import select
 from typing import Callable
 
-from ...models.user import User
 from ...schemas.v1 import ResetRequest, ResetPassword
-from ...services import TokenService, HashService
 
 
 async def _reset_page(request: Request) -> HTMLResponse:
@@ -19,7 +18,7 @@ async def _reset_page(request: Request) -> HTMLResponse:
     )
     response = HTMLResponse(html)
 
-    csrf = TokenService.csrf_response(request)
+    csrf = s.token_service.csrf_response(request)
     for header in csrf.raw_headers:
         if header[0].lower() == b"set-cookie":
             response.raw_headers.append(header)
@@ -46,17 +45,17 @@ async def ui_request(request: Request):
     if not token:
         return await _render_or_raise(
             _invalid_page,
-            HTTPException(status_code=400, detail="Missing token")
+            HTTPException(status_code=400, detail="MISSING_TOKEN")
         )
 
-    try: token_data = await TokenService.validate_token(token, "reset")
+    try: token_data = await s.token_service.validate_token(token, "reset")
     except HTTPException as e: return await _render_or_raise(_invalid_page, e)
 
     user_id = token_data.get("user_id")
     if not user_id:
         return await _render_or_raise(
             _invalid_page,
-            HTTPException(status_code=400, detail="Invalid token")
+            HTTPException(status_code=400, detail="INVALID_TOKEN")
         )
 
     async with db.async_executor(model=User) as e:
@@ -67,7 +66,7 @@ async def ui_request(request: Request):
         if not user:
             return await _render_or_raise(
                 _invalid_page,
-                HTTPException(status_code=400, detail="Unknown user")
+                HTTPException(status_code=400, detail="UNKNOWN_USER")
             )
 
         try:
@@ -75,7 +74,7 @@ async def ui_request(request: Request):
             request.session["reset_user"] = user.id
             return await _reset_page(request)
         except ValueError:
-            raise HTTPException(status_code=400, detail="No reset handler")
+            raise HTTPException(status_code=400, detail="NO_HANDLER")
 
 
 async def reset_request(request: Request, reset: ResetRequest):
@@ -85,32 +84,32 @@ async def reset_request(request: Request, reset: ResetRequest):
         ).limit(1))
         user = users.first()
         if not user:
-            raise HTTPException(status_code=400, detail="Unknown email")
+            raise HTTPException(status_code=400, detail="UNKNOWN_EMAIL")
 
         from ... import additive
         base_url = str(request.base_url).rstrip("/")
 
         token_data = { "user_id": user.id }
-        token = TokenService.generate_token(token_data, "reset")
+        token = s.token_service.generate_token(token_data, "reset")
 
         try:
-            await events.trigger(additive.unique_name("user_forgot_password"), {
+            events.trigger(additive.unique_name("user_forgot_password"), {
                 "username": user.username,
                 "email": user.email,
                 "link": f"{base_url}{additive.prefix}/api/v1/users/reset?token={token}",
                 "locale": get_locale()
             })
         except ValueError:
-            raise HTTPException(status_code=400, detail="No reset handler")
+            raise HTTPException(status_code=400, detail="NO_HANDLER")
 
     return { "status": "ok" }
 
 
 async def reset_password(request: Request, reset: ResetPassword,
-                         _ = TokenService.csrf_protect):
+                         _ = s.token_service.csrf_protect):
     user_id = request.session.pop("reset_user", None)
     if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid session")
+        raise HTTPException(status_code=400, detail="INVALID_SESSION")
 
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).where(
@@ -118,9 +117,9 @@ async def reset_password(request: Request, reset: ResetPassword,
         ).limit(1))
         user = users.first()
         if not user:
-            raise HTTPException(status_code=400, detail="Unknown user")
+            raise HTTPException(status_code=400, detail="UNKNOWN_USER")
 
-        user.psw_hash = HashService.hash(reset.password)
+        user.psw_hash = s.hash_service.hash(reset.password)
 
     request.session.clear()
     return { "status": "ok" }

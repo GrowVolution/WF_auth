@@ -78,19 +78,4 @@ def setup(a: "Additive", f: "Fluid"):
     v1.patch("/users/me")(update_user)
     v1.delete("/users/me")(delete_user)
 
-    from .authorize import (
-        default_request as authorize_user,
-        admin_request as authorize_admin,
-        roles_request as authorize_roles,
-        any_role_request as authorize_any_role,
-        permissions_request as authorize_permissions,
-        any_permission_request as authorize_any_permission
-    )
-    v1.post("/authorize/user")(authorize_user)
-    v1.post("/authorize/admin")(authorize_admin)
-    v1.post("/authorize/roles")(authorize_roles)
-    v1.post("/authorize/any-role")(authorize_any_role)
-    v1.post("/authorize/permissions")(authorize_permissions)
-    v1.post("/authorize/any-permission")(authorize_any_permission)
-
     a.api.include_router(v1)

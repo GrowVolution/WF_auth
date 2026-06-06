@@ -2,7 +2,6 @@
   "id": "auth",
   "version": "1.0",
   "name": "Authentication API",
-  "description": "",
   "authors": [
     {
       "name": "Pierre",
@@ -10,12 +9,8 @@
     }
   ],
   "requires": {
-    "wf": ">=1.0.0",
-    "additives": {},
+    "wf": ">=1.0.0a2",
     "packages": [
-      "argon2_cffi",
-      "itsdangerous",
-      "authlib",
       "pydantic[email]"
     ]
   },

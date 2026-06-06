@@ -1,18 +1,17 @@
 from fastapi import Request, HTTPException
+from webfluid.core.ext import security as s
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from ...models.user import User
-
-from ...services import UserService
+    from webfluid.extensions.security.models.user import User
 
 
 async def default_request(
         request: Request,
-        current_user: Optional["User"] = UserService.current_user
+        current_user: Optional["User"] = s.user_service.current_user
 ):
     if not current_user:
-        raise HTTPException(status_code=400, detail="Not logged in")
+        raise HTTPException(status_code=400, detail="NOT_LOGGED_IN")
 
     request.session.clear()
     return { "status": "ok" }

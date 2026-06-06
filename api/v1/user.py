@@ -1,19 +1,19 @@
 from fastapi import Request
 from fastapi.exceptions import HTTPException
-from webfluid.core.ext import db, events
-from webfluid.extensions.utils.babel import get_locale
+from webfluid.core.ext import db, events, security as s
+from webfluid.extensions.babel.utils import get_locale
+from webfluid.extensions.security.models.user import User
+from webfluid.utils.logging import factory as log_factory
 from sqlalchemy import select, delete
 
-from ...models.user import User
 from ...schemas.v1 import UpdateUser
-from ...services import UserService, HashService, TokenService
 
 
-async def available_request(user: User = UserService.current_user):
+async def available_request(user: User = s.user_service.current_user):
     return { "available": user is not None }
 
 
-async def get_request(user: User = UserService.require_user):
+async def get_request(user: User = s.user_service.require_user):
     roles = []
     is_admin = False
     for role in user.roles:
@@ -29,7 +29,8 @@ async def get_request(user: User = UserService.require_user):
         "id": user.id,
         "username": user.username,
         "email": user.email,
-        "confirmed": user.confirmed,
+        "pending_email": user.pending_email,
+        "email_verified": user.email_verified,
         "roles": roles,
         "is_admin": is_admin
     }
@@ -38,14 +39,16 @@ async def get_request(user: User = UserService.require_user):
 async def update_request(
         request: Request,
         update: UpdateUser,
-        user: User = UserService.require_user
+        user: User = s.user_service.require_user
 ):
     if user.psw_hash:
         if update.new_password and not update.current_password:
-            raise HTTPException(status_code=400, detail="Missing current password")
+            raise HTTPException(status_code=400, detail="MISSING_CURRENT_PASSWORD")
 
-        elif update.current_password and not HashService.verify(user.psw_hash, update.current_password):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        elif update.current_password and not s.hash_service.verify(
+                user.psw_hash, update.current_password
+        ):
+            raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
 
     if user.username != update.username:
         async with db.async_executor(model=User) as e:
@@ -53,12 +56,12 @@ async def update_request(
                 User.username == update.username
             ).limit(1))
             if users.first():
-                raise HTTPException(status_code=400, detail="Username already taken")
+                raise HTTPException(status_code=400, detail="USERNAME_TAKEN")
 
         user.username = update.username
 
     if update.new_password:
-        user.psw_hash = HashService.hash(update.new_password)
+        user.psw_hash = s.hash_service.hash(update.new_password)
 
     if user.email != update.email:
         async with db.async_executor(model=User) as e:
@@ -66,30 +69,30 @@ async def update_request(
                 User.email == update.email
             ).limit(1))
             if users.first():
-                raise HTTPException(status_code=400, detail="Email already taken")
+                raise HTTPException(status_code=400, detail="EMAIL_TAKEN")
 
         from ... import additive
         base_url = str(request.base_url).rstrip("/")
 
         try:
             if user.email:
-                token = TokenService.generate_token({
+                token = s.token_service.generate_token({
                     "user_id": user.id,
                     "email": update.email
                 }, "confirm")
                 event = "user_changed_mail"
                 event_type = "CHANGE"
-                request.session["pending_email"] = update.email
+                user.pending_email = update.email
 
             else:
-                token = TokenService.generate_token({
+                token = s.token_service.generate_token({
                     "user_id": user.id
                 }, "confirm")
                 event = "user_registered"
                 event_type = "REGISTRATION"
                 user.email = update.email
 
-            await events.trigger(additive.unique_name(event), {
+            events.trigger(additive.unique_name(event), {
                 "type": event_type,
                 "username": user.username,
                 "email": update.email,
@@ -98,12 +101,14 @@ async def update_request(
             })
 
         except ValueError:
+            log_factory.warning(f"[{additive.name}] No confirmation handler.")
             user.email = update.email
+            user.pending_email = None
 
     return { "status": "ok" }
 
 
-async def delete_request(request: Request, user: User = UserService.require_user):
+async def delete_request(request: Request, user: User = s.user_service.require_user):
     async with db.async_executor(model=User) as e:
         await e.exec(delete(User).where(User.id == user.id))
 

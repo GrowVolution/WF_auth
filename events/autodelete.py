@@ -1,8 +1,7 @@
 from webfluid.core.ext import db
+from webfluid.extensions.security.models.user import User
 from sqlalchemy import select
 from datetime import timedelta
-
-from ..models.user import User
 
 
 async def handle_event(autodelete_after: int):
@@ -11,5 +10,4 @@ async def handle_event(autodelete_after: int):
             User.created_at < (User.created_at + timedelta(days=autodelete_after)),
             User.confirmed == False
         ))
-        for user in users.all():
-            await e.delete(user)
+        for user in users.all(): await e.delete(user)

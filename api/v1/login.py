@@ -1,18 +1,18 @@
 from fastapi import Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
-from webfluid.core.ext import db
+from webfluid.core.ext import db, security as s
 from sqlalchemy import select
-from argon2.exceptions import VerifyMismatchError
+from webfluid.extensions.security.models.user import (
+    User, Identity
+)
 
-from ...models.user import User, Identity
+from .create import _trigger
 from ...schemas.v1 import LoginUser
-from ...services import TokenService, UserService, HashService, OAuthService
 
 
 async def default_request(request: Request, login: LoginUser,
-                          current_user = UserService.current_user):
+                          current_user = s.user_service.current_user):
     if current_user:
-        raise HTTPException(status_code=400, detail="Already logged in")
+        raise HTTPException(status_code=400, detail="ALREADY_LOGGED_IN")
 
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).where(
@@ -20,39 +20,40 @@ async def default_request(request: Request, login: LoginUser,
         ))
         user = users.first()
         if not user:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
 
         if not user.psw_hash:
-            raise HTTPException(status_code=400, detail="Must login with provider")
+            raise HTTPException(status_code=400, detail="PROVIDER_ONLY")
 
-        try:
-            if not HashService.verify(user.psw_hash, login.password):
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-        except VerifyMismatchError:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not s.hash_service.verify(user.psw_hash, login.password):
+            raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
 
         request.session.clear()
         request.session["user_id"] = user.id
-        return TokenService.csrf_response(request)
+        return s.token_service.csrf_response(request)
 
 
-async def login_available(user = UserService.require_user):
+async def login_available(user = s.user_service.current_user):
     return { "available": user is None }
 
 
 async def oauth_request(
         request: Request, provider: str,
-        client = OAuthService.client,
-        _ = OAuthService.prepare_session
+        client = s.oauth_service.client,
+        _ = s.oauth_service.prepare_session
 ):
     from ... import additive
     redirect_uri = request.url_for(
-        additive.unique_name("oauth_callback"), provider=provider
+        additive.unique_name("oauth_callback"),
+        provider=provider
     )
     return await client.authorize_redirect(request, redirect_uri)
 
 
-async def callback_request(request: Request, provider: str, userinfo = OAuthService.userinfo):
+async def callback_request(
+        request: Request, provider: str,
+        userinfo = s.oauth_service.userinfo
+):
     sub = str(userinfo["sub"])
 
     async with db.async_executor(model=User) as e:
@@ -97,13 +98,15 @@ async def callback_request(request: Request, provider: str, userinfo = OAuthServ
                 provider=provider
             ))
 
+            _trigger(request, user)
+
         else:
             user = identity.user
 
         device = request.session.pop("device", "mobile")
         request.session.clear()
         request.session["user_id"] = user.id
-        token_res = TokenService.csrf_response(request)
-        return await OAuthService.authorize_response(
+        token_res = s.token_service.csrf_response(request)
+        return s.oauth_service.authorize_response(
             request, provider, device, token_res
         )

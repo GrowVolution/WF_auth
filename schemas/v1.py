@@ -1,7 +1,8 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from webfluid.extensions.security.utils import (
+    validate_username, validate_password
+)
 from typing import Optional
-
-from ..utils import validate_username, validate_password
 
 
 class RoleSchema(BaseModel):
@@ -48,8 +49,9 @@ class LoginUser(BaseModel):
 
 class UserResponse(UserSchema):
     id: int
-    email: Optional[EmailStr] = None
-    confirmed: bool
+    email: Optional[EmailStr]
+    pending_email: Optional[EmailStr]
+    email_verified: bool
     is_admin: bool
 
 
@@ -60,11 +62,3 @@ class ResetRequest(BaseModel):
 class ResetPassword(BaseModel):
     password: str
     _validate_password = field_validator("password")(validate_password)
-
-
-class AuthorizeRequest(BaseModel):
-    action: str
-    action_id: str
-
-    roles: list[str] = Field(default_factory=list)
-    permissions: list[str] = Field(default_factory=list)

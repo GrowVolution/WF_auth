@@ -6,9 +6,7 @@ if TYPE_CHECKING:
 
 
 def setup(a: "Additive"):
+    events.create_signal(a.unique_name("user_confirmed"))
+
     from .autodelete import handle_event as autodelete_event
     events.event(a.unique_name("autodelete_unconfirmed"))(autodelete_event)
-
-    from .unconfirm import handle_event as unconfirm_event
-    events.event(a.unique_name("unconfirm_user"))(unconfirm_event)
-    events.create_signal(a.unique_name("user_confirmed"))
