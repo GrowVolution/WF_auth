@@ -62,3 +62,18 @@ class ResetRequest(BaseModel):
 class ResetPassword(BaseModel):
     password: str
     _validate_password = field_validator("password")(validate_password)
+
+
+class Token(BaseModel):
+    name: str
+    exp: Optional[str] = None
+    iat: Optional[str] = None
+
+
+class CreateToken(Token):
+    payload: dict
+    expires: Optional[int] = None
+
+
+class Tokens(BaseModel):
+    tokens: list[Token]

@@ -40,7 +40,7 @@ def _trigger(request: Request, user: User):
     base_url = str(request.base_url).rstrip("/")
     token = s.token_service.generate_token({ "user_id": user.id }, "confirm")
     try:
-        return events.trigger(additive.unique_name("user_created"), {
+        return events.trigger(additive.unique_name("user:created"), {
             "type": "REGISTRATION",
             "username": user.username,
             "email": user.email,

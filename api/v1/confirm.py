@@ -11,7 +11,7 @@ from typing import Callable
 async def _confirmation_page() -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("confirmation_page"),
+        additive.unique_name("page:confirmation"),
         get_locale()
     )
     return HTMLResponse(html)
@@ -20,7 +20,7 @@ async def _confirmation_page() -> HTMLResponse:
 async def _invalid_page() -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("invalid_page"),
+        additive.unique_name("page:invalid"),
         get_locale()
     )
     return HTMLResponse(html)
@@ -75,7 +75,7 @@ async def default_request(request: Request):
         else:
             from ... import additive
             user.email_verified = True
-            events.trigger(additive.unique_name("user_confirmed"), user.id)
+            events.trigger(additive.unique_name("user:confirmed"), user.id)
 
         try: return await _confirmation_page()
         except ValueError: return { "status": "ok" }
@@ -103,7 +103,7 @@ async def resend_request(
     token = s.token_service.generate_token(token_data, "confirm")
 
     try:
-        events.trigger(additive.unique_name("resend_confirmation"), {
+        events.trigger(additive.unique_name("send:confirm"), {
             "type": msg_type,
             "username": user.username,
             "email": user.email,

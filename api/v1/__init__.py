@@ -78,4 +78,13 @@ def setup(a: "Additive", f: "Fluid"):
     v1.patch("/users/me")(update_user)
     v1.delete("/users/me")(delete_user)
 
+    from .jwt import (
+        create_request as create_jwt,
+        list_request as list_jwts,
+        delete_request as delete_jwt
+    )
+    v1.post("/users/jwt")(create_jwt)
+    v1.get("/users/jwts")(list_jwts)
+    v1.delete("/users/jwt")(delete_jwt)
+
     a.api.include_router(v1)

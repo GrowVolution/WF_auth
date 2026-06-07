@@ -13,7 +13,7 @@ from ...schemas.v1 import ResetRequest, ResetPassword
 async def _reset_page(request: Request) -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("reset_page"),
+        additive.unique_name("page:reset"),
         get_locale()
     )
     response = HTMLResponse(html)
@@ -29,7 +29,7 @@ async def _reset_page(request: Request) -> HTMLResponse:
 async def _invalid_page() -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("invalid_page"),
+        additive.unique_name("page:invalid"),
         get_locale()
     )
     return HTMLResponse(html)
@@ -93,7 +93,7 @@ async def reset_request(request: Request, reset: ResetRequest):
         token = s.token_service.generate_token(token_data, "reset")
 
         try:
-            events.trigger(additive.unique_name("user_forgot_password"), {
+            events.trigger(additive.unique_name("send:reset"), {
                 "username": user.username,
                 "email": user.email,
                 "link": f"{base_url}{additive.prefix}/api/v1/users/reset?token={token}",

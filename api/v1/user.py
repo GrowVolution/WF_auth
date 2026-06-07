@@ -80,7 +80,6 @@ async def update_request(
                     "user_id": user.id,
                     "email": update.email
                 }, "confirm")
-                event = "user_changed_mail"
                 event_type = "CHANGE"
                 user.pending_email = update.email
 
@@ -88,11 +87,10 @@ async def update_request(
                 token = s.token_service.generate_token({
                     "user_id": user.id
                 }, "confirm")
-                event = "user_registered"
                 event_type = "REGISTRATION"
                 user.email = update.email
 
-            events.trigger(additive.unique_name(event), {
+            events.trigger(additive.unique_name("send:confirm"), {
                 "type": event_type,
                 "username": user.username,
                 "email": update.email,
