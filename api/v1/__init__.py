@@ -20,8 +20,8 @@ def setup(a: "Additive", f: "Fluid"):
     v1.post("/users/create")(create_user)
 
     from .login import (
+        available_request as login_available,
         default_request as login_user,
-        login_available,
         oauth_request as oauth_login,
         callback_request as oauth_callback
     )

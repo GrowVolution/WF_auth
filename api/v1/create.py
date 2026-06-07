@@ -60,6 +60,15 @@ async def _make_response_and_trigger(
     return s.token_service.csrf_response(request)
 
 
+async def setup_available(user: Optional[User] = s.user_service.current_user):
+    if not DEBUG or user: return { "available": False }
+
+    async with db.async_executor(model=User) as e:
+        users = await e.exec(select(User).limit(1))
+        roles = await e.exec(select(Role).limit(1))
+        return { "available": not (users.first() or roles.first()) }
+
+
 async def setup_request(
         request: Request, setup: InitialSetup,
         current_user: Optional[User] = s.user_service.current_user
@@ -76,82 +85,72 @@ async def setup_request(
             detail="SETUP_ALREADY_PERFORMED"
         )
 
-    async with db.async_executor(model=User) as e:
-        users = await e.exec(select(User).limit(1))
-        if users.first():
-            raise HTTPException(
-                status_code=403,
-                detail="SETUP_ALREADY_PERFORMED"
+    e = db.current_async_executor
+    users = await e.exec(select(User).limit(1))
+    if users.first():
+        raise HTTPException(
+            status_code=403,
+            detail="SETUP_ALREADY_PERFORMED"
+        )
+
+    roles = await e.exec(select(Role).limit(1))
+    if roles.first():
+        raise HTTPException(
+            status_code=403,
+            detail="SETUP_ALREADY_PERFORMED"
+        )
+
+    admin_role = setup.admin_role.name
+    role = await e.insert(Role(admin_role))
+    role.is_admin = True
+
+    for permission_name in setup.admin_role.permissions:
+        permissions = await e.exec(
+            select(Permission).where(
+                Permission.name == permission_name
             )
+        )
+        permission = permissions.first()
+        if not permission:
+            permission = await e.insert(Permission(permission_name))
+        elif permission in role.permissions: continue
+        role.permissions.append(permission)
 
-        roles = await e.exec(select(Role).limit(1))
-        if roles.first():
-            raise HTTPException(
-                status_code=403,
-                detail="SETUP_ALREADY_PERFORMED"
-            )
+    userdata = setup.admin_user
+    user = await e.insert(User(
+        userdata.username,
+        userdata.email,
+        s.hash_service.hash(userdata.password)
+    ), True)
+    user.roles.append(role)
 
-        admin_role = setup.admin_role.name
-        role = await e.insert(Role(admin_role))
-        role.is_admin = True
-
-        for permission_name in setup.admin_role.permissions:
-            permissions = await e.exec(
-                select(Permission).where(
-                    Permission.name == permission_name
-                )
-            )
-            permission = permissions.first()
-            if not permission:
-                permission = await e.insert(Permission(permission_name))
-            elif permission in role.permissions: continue
-            role.permissions.append(permission)
-
-        userdata = setup.admin_user
-        user = await e.insert(User(
-            userdata.username,
-            userdata.email,
-            s.hash_service.hash(userdata.password)
-        ), True)
-        user.roles.append(role)
-
-        response = await _make_response_and_trigger(request, user)
-
+    response = await _make_response_and_trigger(request, user)
     return response
-
-
-async def setup_available(user: Optional[User] = s.user_service.current_user):
-    if not DEBUG or user: return { "available": False }
-
-    async with db.async_executor(model=User) as e:
-        users = await e.exec(select(User).limit(1))
-        roles = await e.exec(select(Role).limit(1))
-        return { "available": not (users.first() or roles.first()) }
 
 
 async def admin_request(
         request: Request, create: CreateUser,
         _ = s.user_service.require_admin
 ):
-    async with db.async_executor(model=User) as e:
-        user = await _create_user(create, e)
+    e = db.current_async_executor
+    user = await _create_user(create, e)
 
-        for r in create.roles:
-            roles = await e.exec(select(Role).where(Role.name == r.name))
-            role = roles.first()
-            if not role:
-                role = await e.insert(Role(r.name))
+    for r in create.roles:
+        roles = await e.exec(select(Role).where(Role.name == r.name))
+        role = roles.first()
+        if not role:
+            role = await e.insert(Role(r.name))
 
-            for p in r.permissions:
-                permissions = await e.exec(select(Permission).where(Permission.name == p))
-                permission = permissions.first()
-                if not permission:
-                    permission = await e.insert(Permission(p))
-                role.permissions.append(permission)
+        for p in r.permissions:
+            permissions = await e.exec(select(Permission).where(Permission.name == p))
+            permission = permissions.first()
+            if not permission:
+                permission = await e.insert(Permission(p))
+            role.permissions.append(permission)
 
-            user.roles.append(role)
+        user.roles.append(role)
 
-        _trigger(request, user)
+    _trigger(request, user)
 
     return { "status": "ok" }
 

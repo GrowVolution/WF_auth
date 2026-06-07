@@ -25,19 +25,20 @@ async def callback_request(
         userinfo = s.oauth_service.userinfo,
         current_user: User = s.user_service.require_user,
 ):
-    async with db.async_executor(model=User) as e:
-        identities = await e.exec(select(Identity).where(
-            Identity.sub == str(userinfo["sub"]),
-            Identity.provider == provider
-        ))
-        if identities.first():
-            raise HTTPException(status_code=400, detail="ALREADY_CONNECTED")
+    e = db.current_async_executor
 
-        await e.insert(Identity(
-            user_id=current_user.id,
-            sub=str(userinfo["sub"]),
-            provider=provider
-        ))
+    identities = await e.exec(select(Identity).where(
+        Identity.sub == str(userinfo["sub"]),
+        Identity.provider == provider
+    ))
+    if identities.first():
+        raise HTTPException(status_code=400, detail="ALREADY_CONNECTED")
 
-        device = request.session.pop("device", "mobile")
-        return s.oauth_service.authorize_response(request, provider, device)
+    await e.insert(Identity(
+        user_id=current_user.id,
+        sub=str(userinfo["sub"]),
+        provider=provider
+    ))
+
+    device = request.session.pop("device", "mobile")
+    return s.oauth_service.authorize_response(request, provider, device)

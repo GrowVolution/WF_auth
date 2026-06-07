@@ -9,6 +9,10 @@ from .create import _trigger
 from ...schemas.v1 import LoginUser
 
 
+async def available_request(user = s.user_service.current_user):
+    return { "available": user is None }
+
+
 async def default_request(request: Request, login: LoginUser,
                           current_user = s.user_service.current_user):
     if current_user:
@@ -31,10 +35,6 @@ async def default_request(request: Request, login: LoginUser,
         request.session.clear()
         request.session["user_id"] = user.id
         return s.token_service.csrf_response(request)
-
-
-async def login_available(user = s.user_service.current_user):
-    return { "available": user is None }
 
 
 async def oauth_request(

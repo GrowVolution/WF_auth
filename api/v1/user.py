@@ -4,7 +4,7 @@ from webfluid.core.ext import db, events, security as s
 from webfluid.extensions.babel.utils import get_locale
 from webfluid.extensions.security.models import User
 from webfluid.utils.logging import factory as log_factory
-from sqlalchemy import select, delete
+from sqlalchemy import select
 
 from ...schemas.v1 import UpdateUser
 
@@ -109,8 +109,7 @@ async def update_request(
 
 
 async def delete_request(request: Request, user: User = s.user_service.require_user):
-    async with db.async_executor(model=User) as e:
-        await e.exec(delete(User).where(User.id == user.id))
-
+    e = db.current_async_executor
+    await e.delete(user)
     request.session.clear()
     return { "status": "ok" }
