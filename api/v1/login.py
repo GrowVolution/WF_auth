@@ -9,8 +9,8 @@ from .create import _trigger
 from ...schemas.v1 import LoginUser
 
 
-async def available_request(user = s.user_service.current_user):
-    return { "available": user is None }
+async def available_request(_ = s.user_service.require_user):
+    return { "available": False }
 
 
 async def default_request(request: Request, login: LoginUser,
