@@ -1,8 +1,8 @@
 from webfluid.core.ext import db
 from webfluid.extensions.security.models import User
-from sqlalchemy import ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from datetime import datetime
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
+from datetime import datetime, UTC
 
 
 def _unique_name(name: str) -> str:
@@ -18,14 +18,12 @@ class Token(db.Model):
         User.id, ondelete="CASCADE"
     ))
 
-    name: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
     exp: Mapped[datetime]
-    iat: Mapped[datetime] = mapped_column(
-        server_default=func.now()
-    )
+    iat: Mapped[datetime]
 
     owner: Mapped[User] = relationship(
-        backref=_unique_name("tokens"),
+        backref=backref(_unique_name("tokens"), cascade="all, delete-orphan"),
         lazy="selectin"
     )
 
@@ -33,3 +31,4 @@ class Token(db.Model):
         self.uid = uid
         self.name = name
         self.exp = exp
+        self.iat = datetime.now(UTC)

@@ -75,5 +75,10 @@ class CreateToken(Token):
     expires: Optional[int] = None
 
 
+class UpdateToken(Token):
+    name: Optional[str] = None
+    iat: str
+
+
 class Tokens(BaseModel):
     tokens: list[Token]

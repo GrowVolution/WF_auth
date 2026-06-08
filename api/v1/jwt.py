@@ -4,7 +4,7 @@ from fastapi.exceptions import HTTPException
 from datetime import datetime, UTC, timedelta
 from sqlalchemy import select
 
-from ...schemas.v1 import CreateToken, Token as DeleteToken
+from ...schemas.v1 import CreateToken, UpdateToken
 from ...models.token import Token
 
 
@@ -22,7 +22,10 @@ async def create_request(
             days=create.expires or ctx.fluid.config.get("JWT_EXPIRY_DAYS", 30)
         )
     ))
-    token = await jwt.aencode(create.payload, expire=create.expires)
+
+    payload = create.payload
+    payload["sub"] = user.id
+    token = await jwt.aencode(payload, expire=create.expires)
     return { "token": token }
 
 
@@ -36,9 +39,23 @@ async def list_request(user = s.user_service.require_user):
     } for t in result.all() ]
 
 
-async def delete_request(delete: DeleteToken, user = s.user_service.require_user):
+async def patch_request(patch: UpdateToken, user = s.user_service.require_user):
     e = db.current_async_executor
-    result = await e.exec(select(Token).where(Token.name == delete.name))
+    result = await e.exec(select(Token).where(
+        Token.iat == datetime.fromisoformat(patch.iat)
+    ))
+    token = result.first()
+    if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
+    if token.owner != user: raise HTTPException(status_code=403, detail="FORBIDDEN")
+    token.name = patch.name
+    return { "status": "ok" }
+
+
+async def delete_request(delete: UpdateToken, user = s.user_service.require_user):
+    e = db.current_async_executor
+    result = await e.exec(select(Token).where(
+        Token.iat == datetime.fromisoformat(delete.iat)
+    ))
     token = result.first()
     if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
     if token.owner != user: raise HTTPException(status_code=403, detail="FORBIDDEN")
