@@ -1,5 +1,6 @@
 from webfluid import Additive, Fluid
 from webfluid.core.ext import babel
+from webfluid.core.constants import EXT_BABEL
 
 additive = Additive(
     __name__,
@@ -8,6 +9,7 @@ additive = Additive(
 		"sqlalchemy",
         "security",
         "events",
+        "cache",
         "jwt"
     ]
 )
@@ -22,8 +24,14 @@ def before_enable(fluid: Fluid):
     from .events import setup as setup_events
     setup_events(additive)
 
-    from .services import setup as setup_services
-    setup_services(fluid)
+    bind = fluid.config.get("SECURITY_MODELS_DB_BIND")
+    if bind:
+        from .models.token import Token
+        Token.set_bind(bind)
 
-    from .i18n import translations
-    babel.update_translations("messages", translations)
+    from .jobs import setup as setup_jobs
+    setup_jobs(fluid)
+
+    if EXT_BABEL:
+        from .i18n import translations
+        babel.update_translations("messages", translations)

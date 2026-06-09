@@ -1,4 +1,4 @@
-from webfluid.core.ext import security as s, jwt, db
+from webfluid.core.ext import security as s, jwt, db, cache
 from webfluid.core.context import FluidContext
 from fastapi.exceptions import HTTPException
 from datetime import datetime, UTC, timedelta
@@ -16,22 +16,26 @@ async def create_request(
     result = await e.exec(select(Token).where(Token.name == create.name))
     if result.first(): raise HTTPException(status_code=400, detail="TOKEN_EXISTS")
 
-    await e.insert(Token(
+    t = await e.insert(Token(
         user.id, create.name,
         datetime.now(UTC) + timedelta(
             days=create.expires or ctx.fluid.config.get("JWT_EXPIRY_DAYS", 30)
         )
-    ))
+    ), True)
 
     payload = create.payload
-    payload["sub"] = user.id
+    payload["sub"] = str(user.id)
+    payload["jti"] = str(t.id)
     token = await jwt.aencode(payload, expire=create.expires)
     return { "token": token }
 
 
 async def list_request(user = s.user_service.require_user):
     e = db.current_async_executor
-    result = await e.exec(select(Token).where(Token.uid == user.id))
+    result = await e.exec(select(Token).where(
+        Token.uid == user.id,
+        Token.revoked == False
+    ))
     return [ {
         "name": t.name,
         "exp": t.exp.isoformat(),
@@ -59,5 +63,9 @@ async def delete_request(delete: UpdateToken, user = s.user_service.require_user
     token = result.first()
     if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
     if token.owner != user: raise HTTPException(status_code=403, detail="FORBIDDEN")
-    await e.delete(token)
+    token.revoked = True
+    await cache.aset(
+        f"jwt:revoked:{token.id}", "1",
+        (token.exp - datetime.now(UTC)).seconds
+    )
     return { "status": "ok" }

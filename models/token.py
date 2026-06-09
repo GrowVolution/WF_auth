@@ -21,6 +21,7 @@ class Token(db.Model):
     name: Mapped[str]
     exp: Mapped[datetime]
     iat: Mapped[datetime]
+    revoked: Mapped[bool] = mapped_column(default=False)
 
     owner: Mapped[User] = relationship(
         backref=backref(_unique_name("tokens"), cascade="all, delete-orphan"),
