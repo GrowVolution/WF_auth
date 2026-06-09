@@ -64,8 +64,9 @@ async def delete_request(delete: UpdateToken, user = s.user_service.require_user
     if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
     if token.owner != user: raise HTTPException(status_code=403, detail="FORBIDDEN")
     token.revoked = True
+    delta = token.exp.replace(tzinfo=UTC) - datetime.now(UTC)
     await cache.aset(
         f"jwt:revoked:{token.id}", "1",
-        (token.exp - datetime.now(UTC)).seconds
+        max(0, int(delta.total_seconds()))
     )
     return { "status": "ok" }

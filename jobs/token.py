@@ -44,7 +44,8 @@ async def cache_revoked():
         result = await e.exec(select(Token).where(Token.revoked == True))
 
         for token in result.all():
+            delta = token.exp.replace(tzinfo=UTC) - now
             await cache.aset(
                 f"jwt:revoked:{token.id}", "1",
-                (token.exp.replace(tzinfo=UTC) - now).seconds
+                max(0, int(delta.total_seconds()))
             )
