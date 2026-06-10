@@ -11,12 +11,10 @@ def setup(a: "Additive", f: "Fluid"):
     from .create import (
         setup_request as initial_setup,
         setup_available,
-        admin_request as create_user_admin,
         default_request as create_user
     )
     v1.get("/dev/setup")(setup_available)
     v1.post("/dev/setup")(initial_setup)
-    v1.post("/admin/users/create")(create_user_admin)
     v1.post("/users/create")(create_user)
 
     from .login import (
@@ -88,5 +86,81 @@ def setup(a: "Additive", f: "Fluid"):
     v1.get("/users/jwts")(list_jwts)
     v1.patch("/users/jwt")(update_jwt)
     v1.delete("/users/jwt")(delete_jwt)
+
+    from .two_fa import (
+        status as two_fa_status,
+        request_totp,
+        verify_totp,
+        delete_totp,
+        register_webauthn,
+        verify_webauthn_register,
+        authenticate_webauthn,
+        verify_webauthn,
+        delete_webauthn,
+        request_backup,
+        verify_backup,
+        delete_backup
+    )
+    from ...schemas.v1 import (
+        AdminUserResponse, AdminRoleResponse,
+        AdminPermissionResponse, AdminConfigResponse
+    )
+
+    from .admin_users import (
+        create_request as admin_create_user,
+        list_request as admin_list_users,
+        get_request as admin_get_user,
+        update_request as admin_update_user,
+        delete_request as admin_delete_user
+    )
+    v1.post("/admin/users")(admin_create_user)
+    v1.get("/admin/users", response_model=list[AdminUserResponse])(admin_list_users)
+    v1.get("/admin/users/{user_id}", response_model=AdminUserResponse)(admin_get_user)
+    v1.patch("/admin/users/{user_id}")(admin_update_user)
+    v1.delete("/admin/users/{user_id}")(admin_delete_user)
+
+    from .admin_roles import (
+        config_request as admin_config,
+        list_request as admin_list_roles,
+        create_request as admin_create_role,
+        update_request as admin_update_role,
+        delete_request as admin_delete_role,
+        add_permission_request as admin_add_role_permission,
+        remove_permission_request as admin_remove_role_permission,
+        add_member_request as admin_add_role_member,
+        remove_member_request as admin_remove_role_member
+    )
+    v1.get("/admin/config", response_model=AdminConfigResponse)(admin_config)
+    v1.get("/admin/roles", response_model=list[AdminRoleResponse])(admin_list_roles)
+    v1.post("/admin/roles")(admin_create_role)
+    v1.patch("/admin/roles/{role_id}")(admin_update_role)
+    v1.delete("/admin/roles/{role_id}")(admin_delete_role)
+    v1.post("/admin/roles/{role_id}/permissions")(admin_add_role_permission)
+    v1.delete("/admin/roles/{role_id}/permissions/{permission_id}")(admin_remove_role_permission)
+    v1.post("/admin/roles/{role_id}/users")(admin_add_role_member)
+    v1.delete("/admin/roles/{role_id}/users/{user_id}")(admin_remove_role_member)
+
+    from .admin_permissions import (
+        list_request as admin_list_permissions,
+        create_request as admin_create_permission,
+        delete_request as admin_delete_permission
+    )
+    v1.get("/admin/permissions", response_model=list[AdminPermissionResponse])(admin_list_permissions)
+    v1.post("/admin/permissions")(admin_create_permission)
+    v1.delete("/admin/permissions/{permission_id}")(admin_delete_permission)
+
+    from ...schemas.v1 import TOTPSetupResponse, BackupCodesResponse
+    v1.get("/users/2fa")(two_fa_status)
+    v1.post("/users/2fa/totp", response_model=TOTPSetupResponse)(request_totp)
+    v1.post("/users/2fa/totp/verify")(verify_totp)
+    v1.delete("/users/2fa/totp")(delete_totp)
+    v1.post("/users/2fa/webauthn/register")(register_webauthn)
+    v1.post("/users/2fa/webauthn/register/verify")(verify_webauthn_register)
+    v1.post("/users/2fa/webauthn/verify")(authenticate_webauthn)
+    v1.post("/users/2fa/webauthn/verify/complete")(verify_webauthn)
+    v1.delete("/users/2fa/webauthn")(delete_webauthn)
+    v1.post("/users/2fa/backup", response_model=BackupCodesResponse)(request_backup)
+    v1.post("/users/2fa/backup/verify")(verify_backup)
+    v1.delete("/users/2fa/backup")(delete_backup)
 
     a.api.include_router(v1)

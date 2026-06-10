@@ -9,7 +9,7 @@ from ...models.token import Token
 
 
 async def create_request(
-        create: CreateToken, user = s.user_service.require_user
+        create: CreateToken, user = s.user_service.require_2fa
 ):
     ctx = FluidContext.current()
     e = db.current_async_executor
@@ -30,7 +30,7 @@ async def create_request(
     return { "token": token }
 
 
-async def list_request(user = s.user_service.require_user):
+async def list_request(user = s.user_service.require_2fa):
     e = db.current_async_executor
     result = await e.exec(select(Token).where(
         Token.uid == user.id,
@@ -43,7 +43,7 @@ async def list_request(user = s.user_service.require_user):
     } for t in result.all() ]
 
 
-async def patch_request(patch: UpdateToken, user = s.user_service.require_user):
+async def patch_request(patch: UpdateToken, user = s.user_service.require_2fa):
     e = db.current_async_executor
     result = await e.exec(select(Token).where(
         Token.iat == datetime.fromisoformat(patch.iat)
@@ -55,7 +55,7 @@ async def patch_request(patch: UpdateToken, user = s.user_service.require_user):
     return { "status": "ok" }
 
 
-async def delete_request(delete: UpdateToken, user = s.user_service.require_user):
+async def delete_request(delete: UpdateToken, user = s.user_service.require_2fa):
     e = db.current_async_executor
     result = await e.exec(select(Token).where(
         Token.iat == datetime.fromisoformat(delete.iat)

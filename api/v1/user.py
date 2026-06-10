@@ -13,7 +13,7 @@ async def available_request(user: User = s.user_service.current_user):
     return { "available": user is not None }
 
 
-async def get_request(user: User = s.user_service.require_user):
+async def get_request(user: User = s.user_service.require_2fa):
     roles = []
     is_admin = False
     for role in user.roles:
@@ -21,7 +21,8 @@ async def get_request(user: User = s.user_service.require_user):
             "name": role.name,
             "permissions": [
                 perm.name for perm in role.permissions
-            ]
+            ],
+            "requires_2fa": role.requires_2fa
         })
         if role.is_admin: is_admin = True
 
@@ -32,14 +33,15 @@ async def get_request(user: User = s.user_service.require_user):
         "pending_email": user.pending_email,
         "email_verified": user.email_verified,
         "roles": roles,
-        "is_admin": is_admin
+        "is_admin": is_admin,
+        "has_2fa": s.user_service.has_2fa(user)
     }
 
 
 async def update_request(
         request: Request,
         update: UpdateUser,
-        user: User = s.user_service.require_user
+        user: User = s.user_service.require_2fa
 ):
     if user.psw_hash:
         if update.new_password and not update.current_password:
@@ -106,7 +108,7 @@ async def update_request(
     return { "status": "ok" }
 
 
-async def delete_request(request: Request, user: User = s.user_service.require_user):
+async def delete_request(request: Request, user: User = s.user_service.require_2fa):
     e = db.current_async_executor
     await e.delete(user)
     request.session.clear()

@@ -83,7 +83,7 @@ async def default_request(request: Request):
 
 async def resend_request(
         request: Request,
-        user: User = s.user_service.require_user
+        user: User = s.user_service.require_2fa
 ):
     if not user.email:
         raise HTTPException(status_code=400, detail="NO_EMAIL")

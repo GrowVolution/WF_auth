@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, or_
 from webfluid.core.ext import db, events, security as s
 from webfluid.core.constants import DEBUG
+from webfluid.core.context import FluidContext
 from webfluid.utils.logging import factory as log_factory
 from webfluid.extensions.babel.utils import get_locale
 from webfluid.extensions.security.models import (
@@ -100,8 +101,14 @@ async def setup_request(
             detail="SETUP_ALREADY_PERFORMED"
         )
 
+    ctx = FluidContext.current()
     admin_role = setup.admin_role.name
-    role = await e.insert(Role(admin_role))
+    role = await e.insert(Role(
+        admin_role,
+        ctx.fluid.config.get(
+            "AUTH_ADMIN_ROLE_REQUIRES_2FA", True
+        )
+    ))
     role.is_admin = True
 
     for permission_name in setup.admin_role.permissions:
@@ -126,33 +133,6 @@ async def setup_request(
 
     response = await _make_response_and_trigger(request, user)
     return response
-
-
-async def admin_request(
-        request: Request, create: CreateUser,
-        _ = s.user_service.require_admin
-):
-    e = db.current_async_executor
-    user = await _create_user(create, e)
-
-    for r in create.roles:
-        roles = await e.exec(select(Role).where(Role.name == r.name))
-        role = roles.first()
-        if not role:
-            role = await e.insert(Role(r.name))
-
-        for p in r.permissions:
-            permissions = await e.exec(select(Permission).where(Permission.name == p))
-            permission = permissions.first()
-            if not permission:
-                permission = await e.insert(Permission(p))
-            role.permissions.append(permission)
-
-        user.roles.append(role)
-
-    _trigger(request, user)
-
-    return { "status": "ok" }
 
 
 async def default_request(request: Request, create: CreateUser):

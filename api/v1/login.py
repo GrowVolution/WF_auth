@@ -1,6 +1,6 @@
 from fastapi import Request, HTTPException
 from webfluid.core.ext import db, security as s
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from webfluid.extensions.security.models import (
     User, Identity
 )
@@ -19,9 +19,10 @@ async def default_request(request: Request, login: LoginUser,
         raise HTTPException(status_code=400, detail="ALREADY_LOGGED_IN")
 
     async with db.async_executor(model=User) as e:
-        users = await e.exec(select(User).where(
-            User.username == login.username
-        ))
+        users = await e.exec(select(User).where(or_(
+            User.username == login.username,
+            User.email == login.username
+        )))
         user = users.first()
         if not user:
             raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")

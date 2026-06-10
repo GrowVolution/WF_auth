@@ -44,6 +44,14 @@ _msg_keys = [
     "FORBIDDEN",
     "TOKEN_EXISTS",
     "UNKNOWN_TOKEN",
+    "TWO_FA_REQUIRED",
+    "TWO_FA_NOT_SETUP",
+    "TWO_FA_ALREADY_SETUP",
+    "INVALID_OTP",
+    "INVALID_BACKUP_CODE",
+    "WEBAUTHN_FAILED",
+    "NO_CHALLENGE",
+    "UNKNOWN_CREDENTIAL",
 
 ]
 
@@ -100,6 +108,14 @@ translations = lambda: {
         _msg_keys[33]: { _default: "Forbidden" },
         _msg_keys[34]: { _default: "Token already exists" },
         _msg_keys[35]: { _default: "Unknown token" },
+        _msg_keys[36]: { _default: "Two-factor authentication required" },
+        _msg_keys[37]: { _default: "Two-factor authentication is not set up" },
+        _msg_keys[38]: { _default: "Two-factor authentication is already set up" },
+        _msg_keys[39]: { _default: "Invalid one-time code" },
+        _msg_keys[40]: { _default: "Invalid backup code" },
+        _msg_keys[41]: { _default: "WebAuthn verification failed" },
+        _msg_keys[42]: { _default: "No pending challenge" },
+        _msg_keys[43]: { _default: "Unknown credential" },
 
     },
 
@@ -157,6 +173,14 @@ translations = lambda: {
         _msg_keys[33]: { _default: "Nicht erlaubt" },
         _msg_keys[34]: { _default: "Token existiert bereits" },
         _msg_keys[35]: { _default: "Unbekannter Token" },
+        _msg_keys[36]: { _default: "Zwei-Faktor-Authentifizierung erforderlich" },
+        _msg_keys[37]: { _default: "Zwei-Faktor-Authentifizierung ist nicht eingerichtet" },
+        _msg_keys[38]: { _default: "Zwei-Faktor-Authentifizierung ist bereits eingerichtet" },
+        _msg_keys[39]: { _default: "Ungültiger Einmalcode" },
+        _msg_keys[40]: { _default: "Ungültiger Backup-Code" },
+        _msg_keys[41]: { _default: "WebAuthn-Verifizierung fehlgeschlagen" },
+        _msg_keys[42]: { _default: "Keine ausstehende Anfrage" },
+        _msg_keys[43]: { _default: "Unbekannter Schlüssel" },
 
     }
 }

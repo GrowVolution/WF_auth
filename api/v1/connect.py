@@ -9,7 +9,7 @@ from sqlalchemy import select
 async def oauth_request(
         request: Request, provider: str,
         client = s.oauth_service.client,
-        _ = s.user_service.require_user,
+        _ = s.user_service.require_2fa,
         __ = s.oauth_service.prepare_session
 ):
     from ... import additive
@@ -23,7 +23,7 @@ async def oauth_request(
 async def callback_request(
         request: Request, provider: str,
         userinfo = s.oauth_service.userinfo,
-        current_user: User = s.user_service.require_user,
+        current_user: User = s.user_service.require_2fa,
 ):
     e = db.current_async_executor
 
