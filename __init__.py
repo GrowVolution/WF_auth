@@ -19,6 +19,11 @@ additive = Additive(
 
 @additive.before_enable
 async def before_enable(fluid: Fluid):
+    fluid.add_source(
+        f'<script src="{additive.prefix}/static/js/utils.js" type="module"></script>',
+        priority=5
+    )
+
     from .api import health, setup_v1
     additive.api.get("/health")(health)
     setup_v1(additive, fluid)
