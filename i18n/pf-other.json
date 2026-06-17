@@ -1,0 +1,22 @@
+{
+  "MIN_LENGTH": [
+    "Password must be at least %(num)i characters long.",
+    "Das Passwort muss mindestens %(num)i Zeichen lang sein."
+  ],
+  "MIN_LOWER": [
+    "Password must contain at least %(num)i lowercase letters.",
+    "Das Passwort muss mindestens %(num)i Kleinbuchstaben enthalten."
+  ],
+  "MIN_UPPER": [
+    "Password must contain at least %(num)i uppercase letters.",
+    "Das Passwort muss mindestens %(num)i Großbuchstaben enthalten."
+  ],
+  "MIN_DIGITS": [
+    "Password must contain at least %(num)i digits.",
+    "Das Passwort muss mindestens %(num)i Ziffern enthalten."
+  ],
+  "MIN_SPECIAL": [
+    "Password must contain at least %(num)i special characters.",
+    "Das Passwort muss mindestens %(num)i Sonderzeichen enthalten."
+  ]
+}

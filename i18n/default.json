@@ -1,0 +1,178 @@
+{
+  "INVALID_USERNAME": [
+    "Invalid username",
+    "Ungültiger Benutzername"
+  ],
+  "MIN_LENGTH": [
+    "Password must be at least %(num)i character long.",
+    "Das Passwort muss mindestens %(num)i Zeichen lang sein."
+  ],
+  "MIN_LOWER": [
+    "Password must contain at least %(num)i lowercase letter.",
+    "Das Passwort muss mindestens %(num)i Kleinbuchstabe enthalten."
+  ],
+  "MIN_UPPER": [
+    "Password must contain at least %(num)i uppercase letter.",
+    "Das Passwort muss mindestens %(num)i Großbuchstabe enthalten."
+  ],
+  "MIN_DIGITS": [
+    "Password must contain at least %(num)i digit.",
+    "Das Passwort muss mindestens %(num)i Ziffer enthalten."
+  ],
+  "MIN_SPECIAL": [
+    "Password must contain at least %(num)i special character.",
+    "Das Passwort muss mindestens %(num)i Sonderzeichen enthalten."
+  ],
+  "CREDENTIALS_TAKEN": [
+    "Username or email already taken",
+    "Benutzername oder E-Mail-Adresse bereits vergeben"
+  ],
+  "PRODUCTION_MODE": [
+    "Not allowed in production mode",
+    "Nicht erlaubt im Produktivbetrieb"
+  ],
+  "SETUP_ALREADY_PERFORMED": [
+    "Initial setup already performed",
+    "Initiale Einrichtung bereits abgeschlossen"
+  ],
+  "ROLES_NOT_ALLOWED": [
+    "Roles are not allowed for default registration",
+    "Rollen dürfen in der Standardregistrierung nicht verwendet werden"
+  ],
+  "ALREADY_LOGGED_IN": [
+    "Already logged in",
+    "Bereits eingeloggt"
+  ],
+  "INVALID_CREDENTIALS": [
+    "Invalid credentials",
+    "Falsche Anmeldedaten"
+  ],
+  "PROVIDER_ONLY": [
+    "Must login with provider",
+    "Login nur über Provider möglich"
+  ],
+  "NOT_LOGGED_IN": [
+    "Not logged in",
+    "Nicht eingeloggt"
+  ],
+  "ALREADY_CONNECTED": [
+    "Provider '%(provider)s' already connected",
+    "Anbieter '%(provider)s' bereits verbunden"
+  ],
+  "INVALID_TOKEN": [
+    "Invalid token",
+    "Ungültiger Token"
+  ],
+  "MISSING_TOKEN": [
+    "Missing token",
+    "Token fehlt"
+  ],
+  "INVALID_CSRF": [
+    "Invalid CSRF token",
+    "Ungültiger CSRF-Token"
+  ],
+  "MISSING_CSRF": [
+    "Missing CSRF token",
+    "CSRF-Token fehlt"
+  ],
+  "CSRF_MISMATCH": [
+    "CSRF token mismatch",
+    "Keine CSRF-Übereinstimmung"
+  ],
+  "UNKNOWN_USER": [
+    "Unknown user",
+    "Unbekannter Benutzer"
+  ],
+  "ALREADY_CONFIRMED": [
+    "Already confirmed",
+    "Bereits bestätigt"
+  ],
+  "NO_HANDLER": [
+    "No handler function registered",
+    "Keine Verarbeitungsfunktion registriert"
+  ],
+  "USERNAME_TAKEN": [
+    "Username already taken",
+    "Benutzername bereits vergeben"
+  ],
+  "UNKNOWN_ERROR": [
+    "Unknown error",
+    "Unbekannter Fehler"
+  ],
+  "UNKNOWN_EMAIL": [
+    "Unknown email address",
+    "Unbekannte E-Mail-Adresse"
+  ],
+  "MISSING_CURRENT_PASSWORD": [
+    "Missing current password",
+    "Aktuelles Passwort fehlt"
+  ],
+  "EMAIL_TAKEN": [
+    "Email already taken",
+    "E-Mail-Adresse bereits vergeben"
+  ],
+  "NOT_AUTHORIZED": [
+    "Not authorized",
+    "Nicht autorisiert"
+  ],
+  "NOT_AUTHENTICATED": [
+    "Not authenticated",
+    "Nicht authentifiziert"
+  ],
+  "NO_EMAIL": [
+    "User has no email",
+    "Benutzer hat keine E-Mail-Adresse"
+  ],
+  "FORBIDDEN": [
+    "Forbidden",
+    "Nicht erlaubt"
+  ],
+  "TOKEN_EXISTS": [
+    "Token already exists",
+    "Token existiert bereits"
+  ],
+  "UNKNOWN_TOKEN": [
+    "Unknown token",
+    "Unbekannter Token"
+  ],
+  "TWO_FA_REQUIRED": [
+    "Two-factor authentication required",
+    "Zwei-Faktor-Authentifizierung erforderlich"
+  ],
+  "TWO_FA_NOT_SETUP": [
+    "Two-factor authentication is not set up",
+    "Zwei-Faktor-Authentifizierung ist nicht eingerichtet"
+  ],
+  "TWO_FA_ALREADY_SETUP": [
+    "Two-factor authentication is already set up",
+    "Zwei-Faktor-Authentifizierung ist bereits eingerichtet"
+  ],
+  "INVALID_OTP": [
+    "Invalid one-time code",
+    "Ungültiger Einmalcode"
+  ],
+  "INVALID_BACKUP_CODE": [
+    "Invalid backup code",
+    "Ungültiger Backup-Code"
+  ],
+  "WEBAUTHN_FAILED": [
+    "WebAuthn verification failed",
+    "WebAuthn-Verifizierung fehlgeschlagen"
+  ],
+  "NO_CHALLENGE": [
+    "No pending challenge",
+    "Keine ausstehende Anfrage"
+  ],
+  "UNKNOWN_CREDENTIAL": [
+    "Unknown credential",
+    "Unbekannter Schlüssel"
+  ],
+  "The part after the @-sign is not valid. It should have a period.": [
+    "The part after the @-sign is not valid. It should have a period.",
+    "Der Abschnitt nach dem @ ist ungültig. Er sollte einen Punkt enthalten."
+  ],
+  "Too many requests": [
+    "Too many requests",
+    "Zu viele Anfragen"
+  ]
+}

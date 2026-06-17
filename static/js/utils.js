@@ -25,13 +25,16 @@ export function csrfFetch(input, init = {}) {
 csrfFetch("/auth/api/v1/users/login/available", {
     method: "POST"
 }).then(r => {
-    if (!r.ok) {
+    if (!r.ok && localStorage.getItem("auth.logged_in") !== "0") {
         fetch("/auth/api/v1/users/logout",{
             credentials: "include"
-        }).then(r => r.json()).catch(() => null)
-        window.location.reload()
+        }).catch(() => null)
+        localStorage.setItem("auth.logged_in", "0")
+        document.addEventListener("DOMContentLoaded", window.location.reload)
+    } else if (r.ok) {
+        localStorage.setItem("auth.logged_in", "1")
     }
-})
+}).catch(() => null)
 
 window.wf.adt.auth = {
     getCookie,
