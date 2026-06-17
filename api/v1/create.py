@@ -86,53 +86,53 @@ async def setup_request(
             detail="SETUP_ALREADY_PERFORMED"
         )
 
-    e = db.current_async_executor
-    users = await e.exec(select(User).limit(1))
-    if users.first():
-        raise HTTPException(
-            status_code=403,
-            detail="SETUP_ALREADY_PERFORMED"
-        )
-
-    roles = await e.exec(select(Role).limit(1))
-    if roles.first():
-        raise HTTPException(
-            status_code=403,
-            detail="SETUP_ALREADY_PERFORMED"
-        )
-
-    ctx = FluidContext.current()
-    admin_role = setup.admin_role.name
-    role = await e.insert(Role(
-        admin_role,
-        ctx.fluid.config.get(
-            "AUTH_ADMIN_ROLE_REQUIRES_2FA", True
-        )
-    ))
-    role.is_admin = True
-
-    for permission_name in setup.admin_role.permissions:
-        permissions = await e.exec(
-            select(Permission).where(
-                Permission.name == permission_name
+    async with db.async_executor(model=User) as e:
+        users = await e.exec(select(User).limit(1))
+        if users.first():
+            raise HTTPException(
+                status_code=403,
+                detail="SETUP_ALREADY_PERFORMED"
             )
-        )
-        permission = permissions.first()
-        if not permission:
-            permission = await e.insert(Permission(permission_name))
-        elif permission in role.permissions: continue
-        role.permissions.append(permission)
 
-    userdata = setup.admin_user
-    user = await e.insert(User(
-        userdata.username,
-        userdata.email,
-        s.hash_service.hash(userdata.password)
-    ), True)
-    user.roles.append(role)
+        roles = await e.exec(select(Role).limit(1))
+        if roles.first():
+            raise HTTPException(
+                status_code=403,
+                detail="SETUP_ALREADY_PERFORMED"
+            )
 
-    response = await _make_response_and_trigger(request, user)
-    return response
+        ctx = FluidContext.current()
+        admin_role = setup.admin_role.name
+        role = await e.insert(Role(
+            admin_role,
+            ctx.fluid.config.get(
+                "AUTH_ADMIN_ROLE_REQUIRES_2FA", True
+            )
+        ))
+        role.is_admin = True
+
+        for permission_name in setup.admin_role.permissions:
+            permissions = await e.exec(
+                select(Permission).where(
+                    Permission.name == permission_name
+                )
+            )
+            permission = permissions.first()
+            if not permission:
+                permission = await e.insert(Permission(permission_name))
+            elif permission in role.permissions: continue
+            role.permissions.append(permission)
+
+        userdata = setup.admin_user
+        user = await e.insert(User(
+            userdata.username,
+            userdata.email,
+            s.hash_service.hash(userdata.password)
+        ), True)
+        user.roles.append(role)
+
+        response = await _make_response_and_trigger(request, user)
+        return response
 
 
 async def default_request(request: Request, create: CreateUser):

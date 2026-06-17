@@ -20,7 +20,7 @@ from webfluid.extensions.security.models import (
     User, TOTPSecret, WebAuthnCredential, BackupCode
 )
 from webfluid.utils.logging import factory as log_factory
-import io, json, base64, secrets, pyotp, qrcode
+import io, json, base64, secrets, pyotp, segno
 
 from ...schemas.v1 import (
     TOTPVerify, BackupCodeVerify,
@@ -112,9 +112,11 @@ async def request_totp(user: User = s.user_service.require_user):
         issuer_name=issuer
     )
 
-    img = qrcode.make(uri)
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    segno.make(uri, error="m").save(
+        buf, kind="svg", scale=5, border=2,
+        dark="#e2e8f0", light=None
+    )
     qr = base64.b64encode(buf.getvalue()).decode()
 
     return { "secret": secret, "uri": uri, "qr": qr }

@@ -13,7 +13,7 @@
     "packages": [
       "pydantic[email]",
       "pyotp",
-      "qrcode[pil]",
+      "segno",
       "webauthn"
     ]
   },
