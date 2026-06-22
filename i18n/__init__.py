@@ -1,4 +1,4 @@
-from webfluid.extensions.babel.utils import translation_resolver
+from webfluid.extensions.babel import translation_resolver
 from pathlib import Path
 
 

@@ -2,7 +2,6 @@ from fastapi import Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 from webfluid.core.ext import db, events, security as s
-from webfluid.extensions.babel.utils import get_locale
 from webfluid.extensions.security.models import User
 from sqlalchemy import select
 from typing import Callable
@@ -11,8 +10,7 @@ from typing import Callable
 async def _confirmation_page() -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("page:confirmation"),
-        get_locale()
+        additive.unique_name("page:confirmation")
     )
     return HTMLResponse(html)
 
@@ -20,8 +18,7 @@ async def _confirmation_page() -> HTMLResponse:
 async def _invalid_page() -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("page:invalid"),
-        get_locale()
+        additive.unique_name("page:invalid")
     )
     return HTMLResponse(html)
 
@@ -107,8 +104,7 @@ async def resend_request(
             "type": msg_type,
             "username": user.username,
             "email": user.email,
-            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
-            "locale": get_locale()
+            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
         })
     except ValueError:
         raise HTTPException(status_code=400, detail="NO_HANDLER")

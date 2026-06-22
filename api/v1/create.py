@@ -5,7 +5,6 @@ from webfluid.core.ext import db, events, security as s
 from webfluid.core.constants import DEBUG
 from webfluid.core.context import FluidContext
 from webfluid.utils.logging import factory as log_factory
-from webfluid.extensions.babel.utils import get_locale
 from webfluid.extensions.security.models import (
     User, Role, Permission
 )
@@ -45,8 +44,7 @@ def _trigger(request: Request, user: User):
             "type": "REGISTRATION",
             "username": user.username,
             "email": user.email,
-            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
-            "locale": get_locale()
+            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
         })
     except ValueError:
         log_factory.warning(f"[{additive.name}] No confirmation handler.")

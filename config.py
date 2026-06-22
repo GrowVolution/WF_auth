@@ -10,7 +10,7 @@ class DefaultConfig:
 
     AUTH_2FA_WEBAUTHN_RP_ID = "localhost"
     AUTH_2FA_WEBAUTHN_RP_NAME = "WebFluid"
-    AUTH_2FA_WEBAUTHN_ORIGIN = "https://localhost:8000"
+    AUTH_2FA_WEBAUTHN_ORIGIN = "http://localhost:8000"
 
     AUTH_ADMIN_ROLE_REQUIRES_2FA = True
 

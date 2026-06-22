@@ -2,7 +2,6 @@ from fastapi import Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 from webfluid.core.ext import db, events, security as s
-from webfluid.extensions.babel.utils import get_locale
 from webfluid.extensions.security.models import User
 from sqlalchemy import select
 from typing import Callable
@@ -13,8 +12,7 @@ from ...schemas.v1 import ResetRequest, ResetPassword
 async def _reset_page(request: Request) -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("page:reset"),
-        get_locale()
+        additive.unique_name("page:reset")
     )
     response = HTMLResponse(html)
 
@@ -29,8 +27,7 @@ async def _reset_page(request: Request) -> HTMLResponse:
 async def _invalid_page() -> HTMLResponse:
     from ... import additive
     html = await events.request(
-        additive.unique_name("page:invalid"),
-        get_locale()
+        additive.unique_name("page:invalid")
     )
     return HTMLResponse(html)
 
@@ -96,8 +93,7 @@ async def reset_request(request: Request, reset: ResetRequest):
             events.trigger(additive.unique_name("send:reset"), {
                 "username": user.username,
                 "email": user.email,
-                "link": f"{base_url}{additive.prefix}/api/v1/users/reset?token={token}",
-                "locale": get_locale()
+                "link": f"{base_url}{additive.prefix}/api/v1/users/reset?token={token}"
             })
         except ValueError:
             raise HTTPException(status_code=400, detail="NO_HANDLER")

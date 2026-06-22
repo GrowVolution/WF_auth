@@ -1,7 +1,7 @@
 from fastapi import Request
 from fastapi.exceptions import HTTPException
 from webfluid.core.ext import db, events, security as s
-from webfluid.extensions.babel.utils import get_locale
+from webfluid.extensions.babel import get_locale
 from webfluid.extensions.security.models import User
 from webfluid.utils.logging import factory as log_factory
 from sqlalchemy import select
