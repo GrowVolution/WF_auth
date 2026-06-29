@@ -29,12 +29,7 @@ csrfFetch("/auth/api/v1/users/login/available", {
         fetch("/auth/api/v1/users/logout",{
             credentials: "include"
         }).catch(() => null)
-        setTimeout(() => {
-            if (window.location.href !== "/")
-                window.location.href = "/"
-            else
-                window.location.reload()
-        }, 1500)
+        setTimeout(window.location.reload, 2500)
         localStorage.setItem("auth.logged_in", "0")
     } else if (r.ok) {
         localStorage.setItem("auth.logged_in", "1")

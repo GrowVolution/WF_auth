@@ -80,10 +80,12 @@ def setup(a: "Additive", f: "Fluid"):
         create_request as create_jwt,
         list_request as list_jwts,
         patch_request as update_jwt,
-        delete_request as delete_jwt
+        delete_request as delete_jwt,
+        metadata_request as jwt_metadata
     )
     v1.post("/users/jwt")(create_jwt)
     v1.get("/users/jwts")(list_jwts)
+    v1.get("/users/jwt/metadata")(jwt_metadata)
     v1.patch("/users/jwt")(update_jwt)
     v1.delete("/users/jwt")(delete_jwt)
 
