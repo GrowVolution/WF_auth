@@ -9,7 +9,7 @@
     }
   ],
   "requires": {
-    "wf": ">=1.0.0a2",
+    "wf": "==1.0.0a2",
     "packages": [
       "pydantic[email]",
       "pyotp",
