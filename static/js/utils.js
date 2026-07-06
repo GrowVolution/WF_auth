@@ -22,21 +22,25 @@ export function csrfFetch(input, init = {}) {
     })
 }
 
-csrfFetch("/auth/api/v1/users/login/available", {
-    method: "POST"
-}).then(r => {
-    if (!r.ok && localStorage.getItem("auth.logged_in") !== "0") {
-        fetch("/auth/api/v1/users/logout",{
-            credentials: "include"
-        }).catch(() => null)
-        setTimeout(window.location.reload, 2500)
-        localStorage.setItem("auth.logged_in", "0")
-    } else if (r.ok) {
-        localStorage.setItem("auth.logged_in", "1")
-    }
-}).catch(() => null)
+function autoLogout() {
+    csrfFetch("/auth/api/v1/users/login/available", {
+        method: "POST"
+    }).then(r => {
+        if (!r.ok && localStorage.getItem("auth.logged_in") !== "0") {
+            fetch("/auth/api/v1/users/logout",{
+                credentials: "include"
+            }).catch(() => null)
+            setTimeout(() => window.location.reload(), 1000)
+            localStorage.setItem("auth.logged_in", "0")
+        } else if (r.ok) {
+            localStorage.setItem("auth.logged_in", "1")
+        }
+    }).catch(() => null)
+}
 
 window.wf.adt.auth = {
     getCookie,
     csrfFetch
 }
+
+document.addEventListener("DOMContentLoaded", autoLogout)
