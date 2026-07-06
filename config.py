@@ -1,5 +1,9 @@
 from webfluid.core.config import register_config
 
+try: from ._my_config import MyConfig
+except ImportError:
+    class MyConfig: pass
+
 
 class DefaultConfig:
     AUTH_TOKEN_EXPIRY_EVENT_DEADLINE = 5
@@ -16,4 +20,4 @@ class DefaultConfig:
 
 
 @register_config()
-class Config(DefaultConfig): pass
+class Config(MyConfig, DefaultConfig): pass
