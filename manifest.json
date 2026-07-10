@@ -1,6 +1,6 @@
 {
   "id": "auth",
-  "version": "1.0",
+  "version": "1.0a1",
   "name": "Authentication API",
   "description": "Login, sessions and two-factor security",
   "authors": [
