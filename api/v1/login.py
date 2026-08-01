@@ -1,6 +1,7 @@
 from fastapi import Request, HTTPException
 from webfluid.core.ext import db, security as s
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from webfluid.extensions.security.models import (
     User, Identity
 )
@@ -58,7 +59,9 @@ async def callback_request(
     sub = str(userinfo["sub"])
 
     async with db.async_executor(model=User) as e:
-        identities = await e.exec(select(Identity).where(
+        identities = await e.exec(select(Identity).options(
+            selectinload(Identity.user)
+        ).where(
             Identity.sub == sub,
             Identity.provider == provider
         ))
