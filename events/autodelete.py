@@ -8,6 +8,6 @@ async def handle_event(autodelete_after: int):
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).where(
             User.created_at < (User.created_at + timedelta(days=autodelete_after)),
-            User.confirmed == False
+            User.email_verified == False
         ))
         for user in users.all(): await e.delete(user)
