@@ -73,6 +73,3 @@ is the additive to start from.
 
 The Authentication API is maintained by **GrowVolution e.V.** and released under the
 **GNU General Public License v3 (GPL v3)**.
-
-See the [Ocean Licensing page](https://ocean.webfluid.dev/licensing) for the
-ecosystem-wide licensing overview.

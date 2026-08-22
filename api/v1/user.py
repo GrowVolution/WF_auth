@@ -15,7 +15,7 @@ async def available_request(user: User = s.user_service.current_user):
     return { "available": user is not None }
 
 
-async def get_request(user: User = s.user_service.require_2fa):
+async def get_request(user: User = s.user_service.require_user):
     async with db.ensured_async_executor(model=User) as e:
         user = await attached_user(
             user, e, selectinload(User.roles).selectinload(Role.permissions)
