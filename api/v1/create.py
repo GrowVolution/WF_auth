@@ -37,17 +37,19 @@ async def _create_user(create: CreateUser, e) -> User:
 
 def _trigger(request: Request, user: User):
     from ... import additive
-    base_url = str(request.base_url).rstrip("/")
+    from .verification import confirmation_link, locale
     token = s.token_service.generate_token({ "user_id": user.id }, "confirm")
     try:
-        return events.trigger(additive.unique_name("user:created"), {
+        events.trigger(additive.unique_name("user:created"), {
             "type": "REGISTRATION",
             "username": user.username,
             "email": user.email,
-            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
+            "link": confirmation_link(request, token),
+            "locale": locale()
         })
     except ValueError:
         log_factory.warning(f"[{additive.name}] No confirmation handler.")
+        user.email_verified = True
 
 
 async def _make_response_and_trigger(

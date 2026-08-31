@@ -22,6 +22,7 @@ from webfluid.extensions.security.models import (
 from webfluid.utils.logging import factory as log_factory
 import io, json, secrets, pyotp, segno
 
+from ..utils import require_verified_session
 from ...schemas.v1 import (
     TOTPVerify, BackupCodeVerify,
     WebAuthnRegister, WebAuthnVerify, WebAuthnDelete
@@ -89,7 +90,8 @@ async def status(request: Request, user: User = s.user_service.require_user):
 
 
 
-async def request_totp(user: User = s.user_service.require_user):
+async def request_totp(request: Request, user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     issuer, *_ = _config()
 
     async with db.ensured_async_executor(model=TOTPSecret) as e:
@@ -130,6 +132,9 @@ async def verify_totp(request: Request, verify: TOTPVerify,
         if not totp:
             raise HTTPException(status_code=400, detail="TWO_FA_NOT_SETUP")
 
+        if not totp.confirmed:
+            require_verified_session(request, user)
+
         if not pyotp.TOTP(totp.secret).verify(verify.code, valid_window=1):
             raise HTTPException(status_code=401, detail="INVALID_OTP")
 
@@ -139,7 +144,8 @@ async def verify_totp(request: Request, verify: TOTPVerify,
     return { "status": "ok" }
 
 
-async def delete_totp(user: User = s.user_service.require_2fa):
+async def delete_totp(request: Request, user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     async with db.ensured_async_executor(model=TOTPSecret) as e:
         result = await e.exec(select(TOTPSecret).where(
             TOTPSecret.user_id == user.id
@@ -155,6 +161,7 @@ async def delete_totp(user: User = s.user_service.require_2fa):
 
 
 async def register_webauthn(request: Request, user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     _, rp_id, rp_name, _ = _config()
 
     async with db.ensured_async_executor(model=WebAuthnCredential) as e:
@@ -181,6 +188,7 @@ async def register_webauthn(request: Request, user: User = s.user_service.requir
 
 async def verify_webauthn_register(request: Request, register: WebAuthnRegister,
                                    user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     _, rp_id, _, origin = _config()
     challenge = request.session.pop(_REG_CHALLENGE, None)
     if not challenge:
@@ -265,8 +273,9 @@ async def verify_webauthn(request: Request, verify: WebAuthnVerify,
     return { "status": "ok" }
 
 
-async def delete_webauthn(delete: WebAuthnDelete,
-                          user: User = s.user_service.require_2fa):
+async def delete_webauthn(request: Request, delete: WebAuthnDelete,
+                          user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     async with db.ensured_async_executor(model=WebAuthnCredential) as e:
         result = await e.exec(select(WebAuthnCredential).where(
             WebAuthnCredential.user_id == user.id,
@@ -282,7 +291,8 @@ async def delete_webauthn(delete: WebAuthnDelete,
 
 
 
-async def request_backup(user: User = s.user_service.require_user):
+async def request_backup(request: Request, user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     cfg = FluidContext.current().fluid.config
     count = cfg.get("AUTH_2FA_BACKUP_CODE_COUNT", 10)
     digits = cfg.get("AUTH_2FA_BACKUP_CODE_DIGITS", 8)
@@ -329,7 +339,8 @@ async def verify_backup(request: Request, verify: BackupCodeVerify,
     return { "status": "ok" }
 
 
-async def delete_backup(user: User = s.user_service.require_2fa):
+async def delete_backup(request: Request, user: User = s.user_service.require_user):
+    require_verified_session(request, user)
     async with db.ensured_async_executor(model=BackupCode) as e:
         result = await e.exec(select(BackupCode).where(
             BackupCode.user_id == user.id

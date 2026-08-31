@@ -49,11 +49,18 @@ def setup(a: "Additive", f: "Fluid"):
     )(connect_callback)
 
     from .confirm import (
-        default_request as confirm_user,
-        resend_request as resend_confirmation
+        default_request as confirm_user
     )
     v1.get("/users/confirm")(confirm_user)
-    v1.post("/users/confirm/resend")(f.limit("2/hour")(resend_confirmation))
+
+    from .verification import (
+        email_request as email_verification,
+        set_email_request as set_email,
+        resend_request as resend_confirmation
+    )
+    v1.get("/verification/email")(email_verification)
+    v1.post("/verification/email")(f.limit("6/hour")(set_email))
+    v1.post("/verification/email/resend")(f.limit("2/hour")(resend_confirmation))
 
     from .reset import (
         reset_request,

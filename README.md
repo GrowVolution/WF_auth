@@ -27,11 +27,14 @@ reusable in any application.
 
 ## What it provides
 
-- **Account lifecycle** — registration, email confirmation, and cleanup of
-  accounts that are never confirmed.
+- **Account lifecycle** — registration, email confirmation, account deletion,
+  and cleanup of accounts that are never confirmed.
 - **Sessions** — sign-in and sign-out backed by the framework's security
   extension.
 - **Password reset** — request and completion flows.
+- **Account activation** — a dedicated verification surface that lets a client
+  walk an account from "signed in" to "fully activated" without ever being
+  locked out by the very gates it is trying to satisfy.
 - **Two-factor authentication** — time-based one-time passwords (TOTP) with QR
   provisioning, and WebAuthn/passkey registration and login.
 - **Token issuance** — JSON Web Tokens for programmatic access, plus a scheduled
@@ -44,6 +47,45 @@ Everything is exposed under the additive's `/api` prefix and versioned under
 
 ---
 
+## Activation without a lockout
+
+Authentication is a chain: a session, then a verified email address, then a
+second factor. Each rung is a gate, and a route sitting on the top rung answers
+`401` for anything below it. That is correct — but it means the routes an account
+needs in order to *climb* the chain cannot themselves sit on top of it, or an
+account with no verified address could never add one.
+
+`auth` resolves that by splitting the two concerns. Routes that act on an
+established account stay on the full chain. Routes that exist to activate an
+account — `/api/v1/verification/*` and the 2FA enrolment routes — are gated at
+the session rung and perform the remaining checks **inside** the handler, so each
+operation carries exactly the authority it needs:
+
+- setting a first email address, or verifying it, needs only a session;
+- changing an address that is already verified is a change of an established
+  credential, and is held to the same bar as any fully authenticated route;
+- adding a second factor to an account that already has one requires a session
+  that has passed the existing factor.
+
+The result is that a client never has to guess: `GET /api/v1/users/me/available`
+says whether anyone is signed in, `GET /api/v1/users/me` says with its `401`
+*which* rung is missing, and `/api/v1/verification/email` says what to render for
+the email step — disclosing the address only while it is actually needed.
+
+---
+
+## Cleaning up after an account
+
+Deleting an account removes far more than the rows `auth` owns. Before it deletes
+anything, `auth` fans out the `auth_user:delete` query carrying nothing but the
+account id, and waits for every subscriber to finish. Any additive that stores
+data against an account registers a handler and removes its own — including the
+artefacts no database cascade reaches: files on disk, remote objects, rows behind
+association tables. `auth` neither knows nor cares who listens; if nobody does,
+the deletion simply proceeds.
+
+---
+
 ## Requirements
 
 `auth` relies on a set of framework extensions and refuses to enable if any are
@@ -51,8 +93,8 @@ missing:
 
 `scheduling` · `sqlalchemy` · `security` · `events` · `cache` · `jwt`
 
-It targets WebFluid `1.0.0a2` and installs a few Python packages for its security
-features (`pyotp`, `segno`, `webauthn`, and `pydantic[email]`).
+It targets WebFluid `1.0.0b1` or newer and installs a few Python packages for its
+security features (`pyotp`, `segno`, `webauthn`, and `pydantic[email]`).
 
 ---
 

@@ -1,9 +1,7 @@
 from fastapi import Request
 from fastapi.exceptions import HTTPException
 from webfluid.core.ext import db, events, security as s
-from webfluid.extensions.babel import get_locale
 from webfluid.extensions.security.models import User, Role
-from webfluid.utils.logging import factory as log_factory
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -15,7 +13,7 @@ async def available_request(user: User = s.user_service.current_user):
     return { "available": user is not None }
 
 
-async def get_request(user: User = s.user_service.require_user):
+async def get_request(user: User = s.user_service.require_2fa):
     async with db.ensured_async_executor(model=User) as e:
         user = await attached_user(
             user, e, selectinload(User.roles).selectinload(Role.permissions)
@@ -46,7 +44,6 @@ async def get_request(user: User = s.user_service.require_user):
 
 
 async def update_request(
-        request: Request,
         update: UpdateUser,
         user: User = s.user_service.require_2fa
 ):
@@ -74,49 +71,24 @@ async def update_request(
         if update.new_password:
             user.psw_hash = s.hash_service.hash(update.new_password)
 
-        if user.email != update.email:
-            users = await e.exec(select(User).where(
-                User.email == update.email
-            ).limit(1))
-            if users.first():
-                raise HTTPException(status_code=400, detail="EMAIL_TAKEN")
-
-            from ... import additive
-            base_url = str(request.base_url).rstrip("/")
-
-            try:
-                if user.email:
-                    token = s.token_service.generate_token({
-                        "user_id": user.id,
-                        "email": update.email
-                    }, "confirm")
-                    event_type = "CHANGE"
-                    user.pending_email = update.email
-
-                else:
-                    token = s.token_service.generate_token({
-                        "user_id": user.id
-                    }, "confirm")
-                    event_type = "REGISTRATION"
-                    user.email = update.email
-
-                events.trigger(additive.unique_name("send:confirm"), {
-                    "type": event_type,
-                    "username": user.username,
-                    "email": update.email,
-                    "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
-                    "locale": get_locale()
-                })
-
-            except ValueError:
-                log_factory.warning(f"[{additive.name}] No confirmation handler.")
-                user.email = update.email
-                user.pending_email = None
-
     return { "status": "ok" }
 
 
+async def purge(user_id: int) -> bool:
+    from ... import additive
+    try:
+        results = await events.request(additive.unique_name("user:delete"), {
+            "user_id": user_id
+        })
+    except ValueError:
+        return True
+
+    return all(result is not None for result in results)
+
+
 async def delete_request(request: Request, user: User = s.user_service.require_2fa):
+    await purge(user.id)
+
     async with db.ensured_async_executor(model=User) as e:
         await e.delete(await attached_user(user, e))
 

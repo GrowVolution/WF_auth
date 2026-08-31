@@ -33,7 +33,7 @@ def get_watcher(fluid: "Fluid"):
                     )
             except ValueError: pass
 
-            await e.exec(delete(Token).where(Token.exp <= now))
+            await e.exec(delete(Token).where(Token.exp <= now), False)
 
     return watcher
 

@@ -64,19 +64,68 @@ session; may require a second factor (see 2FA).
 
 Ends the current session.
 
-### GET /api/v1/users/me · GET /api/v1/users/me/available · PATCH /api/v1/users/me · DELETE /api/v1/users/me
+### GET /api/v1/users/me/available
 
-Reads, probes, updates, or deletes the authenticated user.
-`GET` responds with `UserResponse`; `PATCH` accepts `UpdateUser`.
+Session probe. Answers `{ "available": bool }` for *any* caller — it resolves the
+session without gating it, so a client can tell "signed in" from "signed out"
+before it knows whether the account is fully activated. **This is the endpoint a
+client should use to decide between a login screen and an account screen.**
+
+### GET /api/v1/users/me · PATCH /api/v1/users/me · DELETE /api/v1/users/me
+
+Reads, updates, or deletes the authenticated user. All three sit behind the full
+`require_2fa` chain, so an account that is not fully activated is answered with
+`401 EMAIL_NOT_VERIFIED` or `401 TWO_FA_REQUIRED` — see *Verification* below for
+how a client walks the caller out of those states.
+
+`GET` responds with `UserResponse`. `PATCH` accepts `UpdateUser` (`username`,
+`current_password`, `new_password`) — **the email address is not part of it**;
+the address lifecycle belongs to `/verification/email`. `DELETE` fans out
+`auth_user:delete` before removing the row.
+
+### Verification
+
+The activation surface. Every route here is gated at `require_user` — the lowest
+rung of the chain — and applies its own checks inside, so an account that has not
+passed the email or 2FA gates can still complete its activation. Where an
+operation is as sensitive as a fully authenticated one, the handler escalates to
+the equivalent of `require_2fa` internally.
+
+- **GET /api/v1/verification/email** — the state of the caller's email address.
+  Answers `{ "email": <address|null>, "verified": bool }` while verification is
+  outstanding, and `{ "email": null, "verified": true }` once it is done: the
+  address is disclosed only while a client needs it to render the activation
+  step. A client distinguishes "no address on file" (`email: null`,
+  `verified: false`) from "address awaiting confirmation" (`email` set,
+  `verified: false`).
+- **POST /api/v1/verification/email** — sets or changes the address
+  (`SetEmail`, rate-limited 6/hour). On an account with **no verified address**
+  this runs at `require_user`, which is what makes the address recoverable after
+  a provider sign-in that carried none. On an account **with** a verified
+  address this is a change of an established credential and escalates
+  internally: `401 EMAIL_NOT_VERIFIED` / `401 TWO_FA_REQUIRED` apply exactly as
+  they would on `require_2fa`. Posting the address the account already holds
+  cancels a pending change (`type: "CANCELLED"`).
+  Emits `auth_send:confirm`; answers `{ "status": "ok", "type": ... }` with
+  `REGISTRATION`, `CHANGE`, `CANCELLED`, or `VERIFIED`.
+- **POST /api/v1/verification/email/resend** — resends the pending confirmation
+  (rate-limited 2/hour). Gated at `require_user`; escalates internally for a
+  `CHANGE`, stays at `require_user` for a `REGISTRATION`, because a registration
+  resend is by definition reachable only from an unactivated account.
+
+`VERIFIED` is answered when **no** `auth_send:confirm` handler is registered: an
+application with no confirmation channel cannot demand a confirmation, so the
+address is accepted and marked verified rather than locking the account behind a
+gate nothing can open. The same fallback applies to registration.
 
 ### Email confirmation
 
 - **GET /api/v1/users/confirm** — confirms an email from a `?token=`. Renders the
   confirmation/invalid page (supplied by a page-provider additive, see
   `auth_page:*`) or returns `{ "status": "ok" }`.
-  Emits `auth_user:confirmed` on success.
-- **POST /api/v1/users/confirm/resend** — resends the confirmation mail
-  (rate-limited 2/hour). Emits `auth_send:confirm`.
+  Emits `auth_user:confirmed` on the first successful verification. A token
+  issued for an email *change* carries the new address and is accepted only
+  while that address is still the pending one.
 
 ### Password reset
 
@@ -109,6 +158,15 @@ personal-token management UI.
 - **DELETE /api/v1/users/jwt** — revoke a token.
 
 ## Two-Factor Authentication
+
+Enrolling a factor is gated at `require_user` so a fresh account can set up 2FA
+before it has verified its email — but every route that **adds** a factor, or
+hands out credentials for one, escalates internally: once the account already
+holds a second factor, the session must have passed it (`401 TWO_FA_REQUIRED`).
+The challenge routes (`.../verify`, `.../webauthn/verify`, backup-code verify)
+stay at `require_user`, since passing them is what marks the session verified.
+Removing a factor requires a session that has passed 2FA, but not a verified
+email.
 
 ### GET /api/v1/users/2fa
 
@@ -205,8 +263,11 @@ clients that want to react to a completed confirmation.
 
 Emitted to (re)send a confirmation email — on resend, on an email change, and on
 admin-driven email changes. Payload:
-`{ type: "REGISTRATION" | "CHANGE", username, email, link, [locale] }`.
-Handled by a subscribing mail provider.
+`{ type: "REGISTRATION" | "CHANGE", username, email, link, locale }`.
+`locale` is the request locale (the configured default for an admin-driven
+change) and is `null` when Babel is not enabled; a mail provider should render in
+it. Handled by a subscribing mail provider. If **no** handler is registered, the
+address is accepted and marked verified instead — see *Verification*.
 
 ### auth_send:reset
 
@@ -227,13 +288,41 @@ REST API.
 
 ## Consumes
 
+### auth_user:delete *(query, fan-out)*
+
+Requested immediately **before** an account row is deleted — by
+`DELETE /api/v1/users/me`, by `DELETE /api/v1/admin/users/{user_id}`, and by the
+unconfirmed-account sweep. Payload: `{ "user_id": <int> }`. Nothing else crosses
+the boundary; a handler that needs more looks it up itself.
+
+`auth` never registers a handler for it — the query exists so that every additive
+storing data against an account can remove it. Register with
+`events.query("auth_user:delete", False)`; a missing producer is not an error,
+`auth` skips the request when nobody answers.
+
+Rules a handler must follow:
+
+- **Open its own executor** (`db.async_executor(...)`, not the `ensured_` twin).
+  Handlers are gathered concurrently and a shared `AsyncSession` breaks under
+  concurrent use.
+- **Delete only what the additive owns**, and remove the artefacts that no
+  database cascade reaches — files on disk, remote objects, association rows
+  behind a core statement.
+- **Raise to abort.** An exception propagates out of the request, so the account
+  row survives and the deletion can be retried; handlers that already committed
+  are not rolled back, which is why a handler should be idempotent.
+
+Answer with a JSON-shaped dict; `auth` ignores the value and it exists for
+logging and tests.
+
 ### auth_delete:unconfirmed *(signal)*
 
 Subscribed handler that deletes accounts left unconfirmed past a deadline.
 The signal is triggered on a daily schedule when email confirmation is in use; the
 payload is the retention period in days (int). `auth` owns the deletion logic and
 exposes this as an inbound extension point — it does not schedule the signal
-itself.
+itself. Accounts are selected by `created_at` older than the deadline and each
+one fans out `auth_user:delete` before it is removed.
 
 ### auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
 

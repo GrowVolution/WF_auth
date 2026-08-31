@@ -1,13 +1,14 @@
 from fastapi import Request, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from webfluid.core.ext import db, security as s, events, babel
+from webfluid.core.ext import db, security as s, babel
 from webfluid.core.context import FluidContext
 from webfluid.extensions.security.models import User, Role, Permission
-from webfluid.utils.logging import factory as log_factory
 from typing import Optional
 
 from .create import _create_user, _trigger
+from .user import purge
+from .verification import confirmation_link, send_confirmation
 from ..utils import resolver
 from ...schemas.v1 import CreateUser, AdminUpdateUser
 
@@ -128,27 +129,21 @@ async def update_request(
             if result.first():
                 raise HTTPException(status_code=409, detail="EMAIL_TAKEN")
 
-            from ... import additive
-            base_url = str(request.base_url).rstrip("/")
+            token = s.token_service.generate_token({
+                "user_id": user.id,
+                "email": update.email
+            }, "confirm")
 
-            try:
-                token = s.token_service.generate_token({
-                    "user_id": user.id,
-                    "email": update.email
-                }, "confirm")
-
-                events.trigger(additive.unique_name("send:confirm"), {
-                    "type": "CHANGE",
-                    "username": user.username,
-                    "email": update.email,
-                    "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}",
-                    "locale": babel.default_locale
-                })
+            if send_confirmation(
+                    "CHANGE", user.username, update.email,
+                    confirmation_link(request, token), babel.default_locale
+            ):
                 user.pending_email = update.email
 
-            except ValueError:
-                log_factory.warning(f"[{additive.name}] No confirmation handler.")
+            else:
                 user.email = update.email
+                user.pending_email = None
+                user.email_verified = True
 
         if update.new_password is not None:
             user.psw_hash = s.hash_service.hash(update.new_password)
@@ -179,6 +174,8 @@ async def _resolve_roles(names: list[str], e) -> list[Role]:
 async def delete_request(user_id: int, admin: User = resolver("users:write")):
     if admin and user_id == admin.id:
         raise HTTPException(status_code=400, detail="CANNOT_DELETE_SELF")
+
+    await purge(user_id)
 
     async with db.ensured_async_executor(model=User) as e:
         user = await _get_user(user_id, e)

@@ -14,15 +14,19 @@ class RoleSchema(BaseModel):
 
 class UserSchema(BaseModel):
     username: str
-    email: EmailStr
     roles: list[RoleSchema] = Field(default_factory=list)
 
 
 class CreateUser(UserSchema):
+    email: EmailStr
     password: str
 
     _validate_username = field_validator("username")(validate_username)
     _validate_password = field_validator("password")(validate_password)
+
+
+class SetEmail(BaseModel):
+    email: EmailStr
 
 
 class UpdateUser(UserSchema):

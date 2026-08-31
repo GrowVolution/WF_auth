@@ -61,12 +61,13 @@ async def default_request(request: Request):
             )
 
         elif user.email_verified:
-            if not user.pending_email:
+            pending = token_data.get("email") or user.pending_email
+            if not pending or pending != user.pending_email:
                 return await _render_or_raise(
                     _confirmation_page,
                     HTTPException(status_code=400, detail="ALREADY_CONFIRMED")
                 )
-            user.email = user.pending_email
+            user.email = pending
             user.pending_email = None
 
         else:
@@ -76,37 +77,3 @@ async def default_request(request: Request):
 
         try: return await _confirmation_page()
         except ValueError: return { "status": "ok" }
-
-
-async def resend_request(
-        request: Request,
-        user: User = s.user_service.require_2fa
-):
-    if not user.email:
-        raise HTTPException(status_code=400, detail="NO_EMAIL")
-
-    elif user.email_verified:
-        if not user.pending_email:
-            raise HTTPException(status_code=400, detail="ALREADY_CONFIRMED")
-        msg_type = "CHANGE"
-
-    else:
-        msg_type = "REGISTRATION"
-
-    from ... import additive
-    base_url = str(request.base_url).rstrip("/")
-
-    token_data = { "user_id": user.id }
-    token = s.token_service.generate_token(token_data, "confirm")
-
-    try:
-        events.trigger(additive.unique_name("send:confirm"), {
-            "type": msg_type,
-            "username": user.username,
-            "email": user.email,
-            "link": f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
-        })
-    except ValueError:
-        raise HTTPException(status_code=400, detail="NO_HANDLER")
-
-    return { "status": "ok" }
