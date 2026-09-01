@@ -16,14 +16,10 @@ def locale():
     return str(get_locale())
 
 
-def _link(request: Request, token: str) -> str:
+def confirmation_link(request: Request, token: str) -> str:
     from ... import additive
     base_url = str(request.base_url).rstrip("/")
     return f"{base_url}{additive.prefix}/api/v1/users/confirm?token={token}"
-
-
-def confirmation_link(request: Request, token: str) -> str:
-    return _link(request, token)
 
 
 def send_confirmation(msg_type: str, username: str, email: str,
@@ -105,7 +101,8 @@ async def set_email_request(
             }, "confirm")
 
         if not send_confirmation(
-                msg_type, user.username, update.email, _link(request, token)
+                msg_type, user.username, update.email,
+                confirmation_link(request, token)
         ):
             user.email = update.email
             user.pending_email = None
@@ -133,7 +130,8 @@ async def resend_request(
 
     token = s.token_service.generate_token(payload, "confirm")
     if not send_confirmation(
-            msg_type, user.username, email, _link(request, token)
+            msg_type, user.username, email,
+            confirmation_link(request, token)
     ):
         raise HTTPException(status_code=400, detail="NO_HANDLER")
 

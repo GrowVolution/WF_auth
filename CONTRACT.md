@@ -308,12 +308,16 @@ Rules a handler must follow:
 - **Delete only what the additive owns**, and remove the artefacts that no
   database cascade reaches — files on disk, remote objects, association rows
   behind a core statement.
-- **Raise to abort.** An exception propagates out of the request, so the account
-  row survives and the deletion can be retried; handlers that already committed
-  are not rolled back, which is why a handler should be idempotent.
-
-Answer with a JSON-shaped dict; `auth` ignores the value and it exists for
-logging and tests.
+- **Raise to abort.** During a request an exception propagates out of the
+  request, so the account row survives and the deletion can be retried; handlers
+  that already committed are not rolled back, which is why a handler should be
+  idempotent.
+- **Answer with a JSON-shaped dict.** Off-request — in the unconfirmed-account
+  sweep — the framework swallows a handler's exception and answers `None` for
+  it instead. `auth` reads that as a failed purge and **keeps the account**,
+  logging the failure, so a broken handler delays a deletion rather than
+  orphaning its data. A handler that answers `None` on purpose is therefore
+  read as a failure.
 
 ### auth_delete:unconfirmed *(signal)*
 

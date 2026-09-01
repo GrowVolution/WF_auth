@@ -10,6 +10,7 @@ from ..api.v1.user import purge
 async def handle_event(autodelete_after: int):
     if not isinstance(autodelete_after, int) or autodelete_after < 1: return
 
+    from .. import additive
     deadline = datetime.now(UTC).replace(tzinfo=None) - timedelta(
         days=autodelete_after
     )
@@ -27,7 +28,6 @@ async def handle_event(autodelete_after: int):
             purged.append(user_id)
             continue
 
-        from ... import additive
         log_factory.error(
             f"[{additive.name}] Keeping user {user_id}: "
             f"a {additive.unique_name('user:delete')} handler failed."
