@@ -274,6 +274,43 @@ address is accepted and marked verified instead — see *Verification*.
 Emitted to send a password-reset email. Payload: `{ username, email, link }`.
 Handled by a subscribing mail provider.
 
+### auth_oauth:first-callback
+
+Internal signal. Emitted immediately after a provider sign-in has **created** a
+new account — never on a repeat sign-in and never on
+`/{provider}/connect/callback`, which links a provider to an account that
+already exists. Payload:
+
+```json
+{
+  "user_id": 42,
+  "provider": "sso",
+  "sub": "e2f1…",
+  "claims": { "full_name": "…", "first_name": "…", "last_name": "…", "roles": ["…"] }
+}
+```
+
+`claims` is the provider's userinfo response reduced to a stable shape: `auth`
+reads the usual spellings of each claim (`name` / `full_name` / `display_name` /
+`cn`, `given_name` / `firstName`, `family_name` / `surname` / `sn`, and so on)
+and answers with the normalised field names
+
+`full_name`, `first_name`, `last_name`, `middle_name`, `nickname`, `email`,
+`picture`, `locale`, `timezone`, `phone`, `roles`
+
+`roles` merges every role- and group-shaped claim — `roles`, `groups`,
+`memberOf`, `authorities`, Keycloak's `realm_access.roles` and
+`resource_access.*.roles` — into one de-duplicated list of strings. **Only keys
+the provider actually supplied are present**; a consumer must treat every field
+as optional. `full_name` is derived from first and last name only when both are
+present and the provider sent no name of its own; `auth` never guesses the other
+way round. The helper is `auth.api.utils.normalized_claims`.
+
+The signal exists so that other additives can pick up the profile data an OAuth
+provider hands out once, at the only moment it is available. It is optional in
+both directions: if nobody subscribes, `auth` skips the trigger silently, and a
+subscriber must cope with an empty `claims` object.
+
 ### auth_token:expires
 
 Emitted by the scheduled token watcher for each token nearing expiry, before

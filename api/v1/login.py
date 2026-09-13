@@ -1,5 +1,5 @@
 from fastapi import Request, HTTPException
-from webfluid.core.ext import db, security as s
+from webfluid.core.ext import db, events, security as s
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from webfluid.extensions.security.models import (
@@ -7,6 +7,7 @@ from webfluid.extensions.security.models import (
 )
 
 from .create import _trigger
+from ..utils import normalized_claims
 from ...schemas.v1 import LoginUser
 
 
@@ -50,6 +51,18 @@ async def oauth_request(
         provider=provider
     )
     return await client.authorize_redirect(request, redirect_uri)
+
+
+def _trigger_first_callback(user_id: int, provider: str, sub: str, userinfo):
+    from ... import additive
+    try:
+        events.trigger(additive.unique_name("oauth:first-callback"), {
+            "user_id": user_id,
+            "provider": provider,
+            "sub": sub,
+            "claims": normalized_claims(userinfo)
+        })
+    except ValueError: pass
 
 
 async def callback_request(
@@ -103,6 +116,7 @@ async def callback_request(
             ))
 
             _trigger(request, user)
+            _trigger_first_callback(user.id, provider, sub, userinfo)
 
         else:
             user = identity.user
