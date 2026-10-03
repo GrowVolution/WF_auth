@@ -9,6 +9,7 @@ from webfluid.extensions.security.models import (
 from .create import _trigger
 from ..utils import normalized_claims
 from ...schemas.v1 import LoginUser
+from ...services import approval as approvals, mobile as devices
 
 
 async def available_request(_ = s.user_service.require_user):
@@ -34,6 +35,9 @@ async def default_request(request: Request, login: LoginUser,
 
         if not s.hash_service.verify(user.psw_hash, login.password):
             raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
+
+        phone = await devices.device(user.id)
+        if phone: return await approvals.begin(request, user, phone)
 
         request.session.clear()
         request.session["user_id"] = user.id
@@ -122,6 +126,11 @@ async def callback_request(
             user = identity.user
 
         device = request.session.pop("device", "mobile")
+        phone = await devices.device(user.id) if identity else None
+        if phone:
+            await approvals.begin(request, user, phone)
+            return s.oauth_service.authorize_response(request, provider, device)
+
         request.session.clear()
         request.session["user_id"] = user.id
         token_res = s.token_service.csrf_response(request)

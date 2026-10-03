@@ -108,7 +108,14 @@ def setup(a: "Additive", f: "Fluid"):
         delete_webauthn,
         request_backup,
         verify_backup,
-        delete_backup
+        delete_backup,
+        mobile_state,
+        complete_mobile,
+        fallback_mobile,
+        cancel_mobile,
+        pending_mobile,
+        approve_mobile,
+        deny_mobile
     )
     from ...schemas.v1 import (
         AdminUserResponse, AdminRoleResponse,
@@ -171,5 +178,25 @@ def setup(a: "Additive", f: "Fluid"):
     v1.post("/users/2fa/backup", response_model=BackupCodesResponse)(request_backup)
     v1.post("/users/2fa/backup/verify")(verify_backup)
     v1.delete("/users/2fa/backup")(delete_backup)
+    v1.get("/users/2fa/mobile")(f.limit("120/minute")(mobile_state))
+    v1.post("/users/2fa/mobile/complete")(f.limit("20/minute")(complete_mobile))
+    v1.post("/users/2fa/mobile/fallback")(f.limit("10/minute")(fallback_mobile))
+    v1.post("/users/2fa/mobile/cancel")(cancel_mobile)
+    v1.get("/users/2fa/mobile/pending")(pending_mobile)
+    v1.post("/users/2fa/mobile/approve")(f.limit("30/minute")(approve_mobile))
+    v1.post("/users/2fa/mobile/deny")(f.limit("30/minute")(deny_mobile))
+
+    from .mobile import (
+        challenge_request as mobile_challenge,
+        status_request as mobile_status,
+        register_request as register_mobile,
+        replace_request as replace_mobile,
+        login_request as mobile_login
+    )
+    v1.post("/mobile/challenge")(f.limit("30/minute")(mobile_challenge))
+    v1.get("/mobile")(mobile_status)
+    v1.post("/mobile")(f.limit("10/hour")(register_mobile))
+    v1.put("/mobile")(f.limit("5/hour")(replace_mobile))
+    v1.post("/mobile/login")(f.limit("20/minute")(mobile_login))
 
     a.api.include_router(v1)

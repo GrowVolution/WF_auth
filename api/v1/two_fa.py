@@ -25,8 +25,10 @@ import io, json, secrets, pyotp, segno
 from ..utils import require_verified_session
 from ...schemas.v1 import (
     TOTPVerify, BackupCodeVerify,
-    WebAuthnRegister, WebAuthnVerify, WebAuthnDelete
+    WebAuthnRegister, WebAuthnVerify, WebAuthnDelete,
+    MobileApproval, MobileDenial
 )
+from ...services import approval as approvals, mobile as devices
 
 _REG_CHALLENGE = "webauthn_reg_challenge"
 _AUTH_CHALLENGE = "webauthn_auth_challenge"
@@ -85,6 +87,7 @@ async def status(request: Request, user: User = s.user_service.require_user):
                 for c in credentials
             ],
             "backup_codes": backup_codes,
+            "mobile": await devices.device(user.id) is not None,
             "verified": bool(request.session.get("2fa_verified")),
         }
 
@@ -348,4 +351,134 @@ async def delete_backup(request: Request, user: User = s.user_service.require_us
         for code in result.all():
             await e.delete(code)
 
+    return { "status": "ok" }
+
+
+
+def _sign_in(request: Request, user_id: int, verified: bool):
+    request.session.clear()
+    request.session["user_id"] = user_id
+    if verified: _mark_verified(request)
+    return s.token_service.csrf_response(request)
+
+
+async def _approval(request: Request) -> tuple[str, dict]:
+    approval = request.session.get("mobile_approval")
+    state = await approvals.load(approval)
+    if not state:
+        request.session.pop("mobile_approval", None)
+        raise HTTPException(status_code=401, detail="MOBILE_APPROVAL_EXPIRED")
+    return approval, state
+
+
+async def _pending(approval: str, user_id: int) -> dict:
+    state = await approvals.load(approval)
+    if not state or state.get("state") != "pending" or state.get("user_id") != user_id:
+        raise HTTPException(status_code=409, detail="MOBILE_APPROVAL_UNAVAILABLE")
+    return state
+
+
+async def _verify_device(user_id: int, message: str, signature: str):
+    device = await devices.device(user_id)
+    if not device or not devices.verify(device.sig_pubkey, message, signature):
+        raise HTTPException(status_code=401, detail="INVALID_SIGNATURE")
+
+
+async def mobile_state(request: Request):
+    approval = request.session.get("mobile_approval")
+    if not approval: return { "pending": False }
+
+    state = await approvals.load(approval)
+    if not state: return { "pending": True, "state": "expired" }
+
+    return {
+        "pending": True,
+        "state": state["state"],
+        "number": state["number"],
+        "fallback": state["fallback"],
+        "expires": approvals.remaining(state)
+    }
+
+
+async def complete_mobile(request: Request):
+    approval, state = await _approval(request)
+    if state["state"] == "pending":
+        raise HTTPException(status_code=409, detail="MOBILE_APPROVAL_PENDING")
+    if state["state"] != "approved":
+        raise HTTPException(status_code=401, detail="MOBILE_APPROVAL_DENIED")
+
+    state["state"] = "used"
+    await approvals.store(approval, state)
+    return _sign_in(request, state["user_id"], True)
+
+
+async def fallback_mobile(request: Request):
+    approval, state = await _approval(request)
+    if state["state"] not in ("pending", "approved"):
+        raise HTTPException(status_code=401, detail="MOBILE_APPROVAL_DENIED")
+    if not state["fallback"]:
+        raise HTTPException(status_code=400, detail="TWO_FA_NOT_SETUP")
+
+    state["state"] = "cancelled"
+    await approvals.store(approval, state)
+    approvals.push(state, approval)
+    return _sign_in(request, state["user_id"], False)
+
+
+async def cancel_mobile(request: Request):
+    approval = request.session.get("mobile_approval")
+    state = await approvals.load(approval)
+    if state and state["state"] == "pending":
+        state["state"] = "cancelled"
+        await approvals.store(approval, state)
+        approvals.push(state, approval)
+
+    request.session.clear()
+    return { "status": "ok" }
+
+
+async def pending_mobile(user: User = s.user_service.require_2fa):
+    found = await approvals.pending(user.id)
+    if not found: return { "approval": None }
+
+    approval, state = found
+    return { "approval": approval, "expires": approvals.remaining(state) }
+
+
+async def approve_mobile(request: Request, approval: MobileApproval):
+    state = await _pending(approval.approval, approval.user_id)
+    await _verify_device(
+        approval.user_id,
+        approvals.approve_message(approval.user_id, approval.approval, approval.number),
+        approval.signature
+    )
+
+    if approval.number != state["number"]:
+        state["attempts"] += 1
+        if state["attempts"] >= approvals.APPROVAL_ATTEMPTS:
+            state["state"] = "denied"
+            await approvals.store(approval.approval, state)
+            approvals.push(state, approval.approval)
+            raise HTTPException(status_code=409, detail="MOBILE_APPROVAL_DENIED")
+
+        await approvals.store(approval.approval, state)
+        raise HTTPException(status_code=400, detail="WRONG_NUMBER")
+
+    state["state"] = "approved"
+    await approvals.store(approval.approval, state)
+    approvals.push(state, approval.approval)
+    return { "status": "ok" }
+
+
+async def deny_mobile(request: Request, denial: MobileDenial):
+    state = await _pending(denial.approval, denial.user_id)
+    await _verify_device(
+        denial.user_id,
+        approvals.deny_message(denial.user_id, denial.approval),
+        denial.signature
+    )
+
+    state["state"] = "denied"
+    await approvals.store(denial.approval, state)
+    approvals.push(state, denial.approval)
     return { "status": "ok" }

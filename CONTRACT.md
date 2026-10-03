@@ -60,16 +60,24 @@ Checks whether a given identity can sign in and by which method.
 Signs a user in. Request: `LoginUser` (`username`, `password`). Establishes the
 session; may require a second factor (see 2FA).
 
+For an account with a mobile device the password alone establishes **nothing**:
+the answer is `{ "status": "mobile_2fa", "number": <10–99>, "expires": <seconds>,
+"fallback": bool }` instead of `{ "status": "ok" }`, and the session only holds
+the open approval — see *Mobile approval* below.
+
 ### GET /api/v1/users/logout
 
 Ends the current session.
 
 ### GET /api/v1/users/me/available
 
-Session probe. Answers `{ "available": bool }` for *any* caller — it resolves the
-session without gating it, so a client can tell "signed in" from "signed out"
-before it knows whether the account is fully activated. **This is the endpoint a
-client should use to decide between a login screen and an account screen.**
+Session probe. Answers `{ "available": bool, "mobile_2fa": bool }` for *any*
+caller — it resolves the session without gating it, so a client can tell "signed
+in" from "signed out" before it knows whether the account is fully activated.
+`mobile_2fa` is `true` while the session waits for a mobile approval, which is how
+a client finds its way back to the number after a provider sign-in or a reload.
+**This is the endpoint a client should use to decide between a login screen and
+an account screen.**
 
 ### GET /api/v1/users/me · PATCH /api/v1/users/me · DELETE /api/v1/users/me
 
@@ -141,7 +149,9 @@ Provider-driven sign-in and account linking. `{provider}` selects the OAuth
 provider.
 
 - **GET /api/v1/{provider}/login** and **GET|POST /api/v1/{provider}/login/callback**
-  — sign in through an external provider.
+  — sign in through an external provider. For an existing account with a mobile
+  device the callback opens a mobile approval instead of a session, exactly like
+  the password login.
 - **GET /api/v1/{provider}/connect** and **GET|POST /api/v1/{provider}/connect/callback**
   — link a provider to the signed-in account.
 
@@ -194,6 +204,144 @@ Returns the user's configured second factors.
 - **POST /api/v1/users/2fa/backup/verify** — consume a code (`BackupCodeVerify`).
 - **DELETE /api/v1/users/2fa/backup** — remove backup codes.
 
+`GET /api/v1/users/2fa` also answers `mobile: bool` — whether the account has a
+mobile device.
+
+### Mobile approval
+
+Once an account has a mobile device (see *Mobile devices*), the device **is** its
+second factor, ranked above TOTP and WebAuthn: every password or provider sign-in
+— in a browser or in an app on another phone — has to be approved on it. The
+other factors remain as the **fallback** for when the device is not at hand.
+
+The approval works by number matching. The sign-in shows a number from 10 to 99;
+the device is asked to approve the sign-in, and the user has to type that number
+into it. The device signs the number with its signing key, so neither an attacker
+nor a careless tap can approve a sign-in the user is not looking at.
+
+Until an approval is complete the session carries **no user** — only the open
+approval. Every gate of every additive therefore answers
+`401 NOT_AUTHENTICATED` in the meantime, without any of them knowing about mobile
+approvals. An approval expires after 120 seconds.
+
+Routes for the signing-in client (the session of the sign-in):
+
+- **GET /api/v1/users/2fa/mobile** — the approval's state (rate-limited
+  120/minute): `{ "pending": false }` without one, otherwise
+  `{ "pending": true, "state", "number", "fallback", "expires" }` with `state`
+  one of `pending`, `approved`, `denied`, `cancelled`, `used` — or
+  `{ "pending": true, "state": "expired" }`. Poll it while waiting.
+- **POST /api/v1/users/2fa/mobile/complete** — turns an approved approval into
+  the session, marked as having passed the second factor, and sets the CSRF
+  cookie (rate-limited 20/minute). `409 MOBILE_APPROVAL_PENDING` while it is
+  still open, `401 MOBILE_APPROVAL_DENIED` or `401 MOBILE_APPROVAL_EXPIRED`
+  otherwise.
+- **POST /api/v1/users/2fa/mobile/fallback** — gives up on the device and opens
+  an ordinary session that still has to pass TOTP, WebAuthn or a backup code
+  (rate-limited 10/minute). Only offered — `fallback: true` — when the account
+  has one of them; `400 TWO_FA_NOT_SETUP` otherwise.
+- **POST /api/v1/users/2fa/mobile/cancel** — abandons the sign-in and clears the
+  session.
+
+Routes for the device:
+
+- **GET /api/v1/users/2fa/mobile/pending** — the open approval of the account,
+  `{ "approval": <id>|null, "expires" }`. Gated at `require_2fa`; a device asks
+  after it signed in or came back to the foreground, since the push below only
+  reaches a running app.
+- **POST /api/v1/users/2fa/mobile/approve** (`MobileApproval`: `user_id`,
+  `approval`, `number`, `signature`; rate-limited 30/minute) — no session needed,
+  the device signs
+
+  ```text
+  auth_mobile:approve
+  <user_id>
+  <approval>
+  <number>
+  ```
+
+  A wrong number answers `400 WRONG_NUMBER`; the third wrong number denies the
+  approval (`409 MOBILE_APPROVAL_DENIED`).
+- **POST /api/v1/users/2fa/mobile/deny** (`MobileDenial`: `user_id`, `approval`,
+  `signature`; rate-limited 30/minute) — rejects the sign-in, signed
+  `auth_mobile:deny` / `<user_id>` / `<approval>`.
+
+`409 MOBILE_APPROVAL_UNAVAILABLE` for an approval that is no longer open and
+`401 INVALID_SIGNATURE` for a signature of anything but the account's device.
+
+## Mobile devices
+
+A mobile app can bind one device to an account and sign in with it afterwards.
+The device holds two key pairs; `auth` only ever sees the public halves. An
+account has **at most one** device. A device is never removed on its own — it can
+only be *replaced*, and only by a session that signed in the traditional way.
+
+Keys and signatures are base64url without padding: `enc_pubkey` is a raw X25519
+public key (32 bytes), `sig_pubkey` a raw Ed25519 public key (32 bytes), and a
+signature is a raw Ed25519 signature (64 bytes) over the UTF-8 message lines
+listed below, joined with `\n`.
+
+### POST /api/v1/mobile/challenge
+
+Issues a single-use challenge (rate-limited 30/minute). No auth. Answers
+`{ "challenge": <43 chars>, "expires": 120 }`. A challenge is consumed by the
+first request that presents it, whether that request succeeds or not.
+
+### GET /api/v1/mobile
+
+The verification endpoint. Gated at `require_2fa`. Answers
+`{ "enrolled": bool, "enc_pubkey": str|null, "sig_pubkey": str|null }` for the
+caller's account, so a client can compare the server's copy with its own.
+
+### POST /api/v1/mobile
+
+Registers the account's first device (`MobileKeys`: `enc_pubkey`, `sig_pubkey`,
+`challenge`, `signature`; rate-limited 10/hour). Gated at `require_2fa` — a
+session, a verified email, and a passed second factor when the account has one;
+bearer tokens are not accepted. The device proves possession of its new signing
+key by signing
+
+```text
+auth_mobile:register
+<user_id>
+<enc_pubkey>
+<sig_pubkey>
+<challenge>
+```
+
+`409 MOBILE_ALREADY_ENROLLED` when the account already has a device;
+`400 INVALID_KEY`, `401 INVALID_CHALLENGE` and `401 INVALID_SIGNATURE` otherwise.
+
+### PUT /api/v1/mobile
+
+Registers or **replaces** the device (`MobileKeys`, same message, rate-limited
+5/hour). Same gate as `POST`, and additionally refused with
+`403 REAUTHENTICATION_REQUIRED` for a session that was itself opened by a device
+login: only a traditional sign-in (password or provider, plus the second factor)
+may move an account to other keys. This is how a client restores its own keys
+after the server lost or mixed them up, and how a new device takes over after a
+recovery. Answers `{ "status": "ok", "replaced": bool }`; when the keys actually
+changed it triggers `auth_mobile:replaced`.
+
+### POST /api/v1/mobile/login
+
+Signs in with the device (`MobileLogin`: `user_id`, `challenge`, `signature`;
+rate-limited 20/minute). No auth. The device signs
+
+```text
+auth_mobile:login
+<user_id>
+<challenge>
+```
+
+On success the session is replaced exactly like a password login, marked as
+having passed the second factor — the device was enrolled from a session that
+had — and the CSRF cookie is set. `401 INVALID_CHALLENGE` for an unknown or spent
+challenge; `401 MOBILE_AUTH_FAILED` for everything else. An unknown account, an
+account without a device and a signature that does not match are deliberately
+indistinguishable, so the route cannot be used to probe which accounts have a
+device.
+
 ## Administration
 
 Endpoints for managing users, roles, and permissions. Every route requires
@@ -241,8 +389,8 @@ Endpoints for managing users, roles, and permissions. Every route requires
 # Events / Queries
 
 Event names are namespaced `auth_<name>`. This section splits into **Triggers**
-(signals `auth` emits), **Provides** (queries `auth` answers — none), and
-**Consumes** (signals it subscribes to and queries it requests).
+(signals `auth` emits), **Provides** (queries `auth` answers), and **Consumes**
+(signals it subscribes to and queries it requests).
 
 ## Triggers
 
@@ -318,10 +466,62 @@ expired tokens are purged. Payload:
 `{ username, email, token, exp, iat }`. Offered for a notifier to subscribe to;
 no additive consumes it today.
 
+### auth_mobile:approval
+
+Public signal, the push of a mobile approval. Emitted when a sign-in opens an
+approval and whenever its state changes. Payload:
+`{ "device": <fingerprint>, "approval": <id>, "state": <state>, "expires": <s> }`.
+`device` is base64url of the first 16 bytes of SHA-256 over the device's raw
+`sig_pubkey`; a device recognises its own pushes by it, and nobody else can map it
+to an account. The payload never contains the number — the user has to read it
+off the sign-in. Event delivery is best-effort and only reaches a running app; a
+device that comes back asks `GET /api/v1/users/2fa/mobile/pending`.
+
+Like every public signal it can also be *triggered* by any socket client, so a
+device treats it as a doorbell only: on a push for its fingerprint it asks
+`GET /api/v1/users/2fa/mobile/pending` and shows what the server confirms.
+
+### auth_mobile:replaced
+
+Internal signal. Emitted by `PUT /api/v1/mobile` when an account's device keys
+were actually replaced — not on a first registration and not when the same keys
+are presented again. Payload: `{ "user_id": <int> }`. Optional in both
+directions: `auth` skips the trigger silently when nobody subscribes. A mail
+provider can use it to tell the account owner that the account moved to other
+keys.
+
 ## Provides
 
-`auth` registers no query handlers. Its identity data is reached through the
-REST API.
+`auth`'s identity data is reached through the REST API. The queries below exist
+so that other additives can work with an account's mobile device without ever
+holding its keys. Both are **internal** — server-side only, never reachable over
+the events websocket.
+
+### auth_user-encrypt *(query)*
+
+Encrypts data so that only the account's mobile device can read it. Payload:
+`{ "user_id": <int>, "data": <base64url> }`. Answers the envelope as a string, or
+`null` when the account has no device. A malformed payload raises `TypeError`.
+
+The envelope is `x1.` followed by base64url of `epk ‖ nonce ‖ ciphertext ‖ tag`.
+A fresh X25519 key pair is generated per call; its public half `epk` (32 bytes)
+agrees a secret with the device's `enc_pubkey`, HKDF-SHA256 with salt
+`epk ‖ enc_pubkey` and info `webfluid-mobile-x1` derives a 32-byte key, and the
+data is sealed with AES-256-GCM under a random 12-byte `nonce` (16-byte tag, no
+associated data). A device produces the same format when it encrypts to itself or
+to another device, so every party can open what the others seal.
+
+### auth_verify-signature *(query)*
+
+Checks a signature made by the account's mobile device. Payload:
+`{ "user_id": <int>, "message": <str>, "signature": <base64url> }`. Answers `true`
+only when the account has a device and the Ed25519 signature over the UTF-8
+message verifies against its `sig_pubkey`; `false` otherwise. A malformed payload
+raises `TypeError`.
+
+Prefix every message with a contract name of your own, one per purpose — as
+`auth` does with `auth_mobile:login` and `auth_mobile:register` — so that a
+signature made for one purpose can never be replayed into another.
 
 ## Consumes
 

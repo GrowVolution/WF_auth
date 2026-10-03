@@ -36,9 +36,13 @@ reusable in any application.
   walk an account from "signed in" to "fully activated" without ever being
   locked out by the very gates it is trying to satisfy.
 - **Two-factor authentication** — time-based one-time passwords (TOTP) with QR
-  provisioning, and WebAuthn/passkey registration and login.
+  provisioning, WebAuthn/passkey registration and login, and — once an account
+  has a mobile device — sign-in approval on that device by number matching.
 - **Token issuance** — JSON Web Tokens for programmatic access, plus a scheduled
   watcher that keeps revoked tokens out of circulation.
+- **Mobile devices** — one device per account, bound by its public keys, which
+  can afterwards open a session by signing a challenge instead of entering a
+  password.
 - **Administrative endpoints** — the API surface for managing users, roles, and
   permissions.
 
@@ -74,6 +78,46 @@ the email step — disclosing the address only while it is actually needed.
 
 ---
 
+## Mobile devices
+
+A mobile app signs in the traditional way exactly once. Afterwards it generates
+two key pairs on the device — one to encrypt, one to sign — keeps the private
+halves behind the device's biometrics or screen lock, and registers the public
+halves with `auth`. From then on the app opens a session by signing a fresh,
+single-use challenge; `auth` checks the signature against the stored key and
+hands out the same session and CSRF cookies a password login would.
+
+The rules are deliberately narrow:
+
+- **One device per account.** Registering requires a fully authenticated
+  session — verified email and, where the account has one, a passed second
+  factor — so a device can never become a way around 2FA.
+- **Replace, never remove.** A device is not deleted on its own. A session that
+  signed in the traditional way may replace the keys, which is how an app
+  restores its own copy after the server lost or mixed up the stored keys, and
+  how a new phone takes over after a recovery. A device login cannot replace
+  itself.
+- **The device is the source of truth.** `auth` stores nothing that would let it
+  act as the device. It can only encrypt *to* the device and check what the
+  device signed, and it offers exactly that to other additives as the
+  `auth_user-encrypt` and `auth_verify-signature` queries. This is what lets an
+  additive built on top keep data end-to-end encrypted without ever touching key
+  material.
+
+### The device as second factor
+
+Once an account has a device, that device becomes its second factor — above an
+authenticator app or a security key. A password or provider sign-in anywhere
+else shows a two-digit number and pushes an approval request to the device; the
+user types the number into the app, which signs it. Until then the session holds
+no user at all, so every route of every additive stays closed without knowing
+anything about mobile approvals. The other factors remain as the fallback for
+the day the phone is not at hand, which is also what makes a lost phone
+recoverable — keep one of them. The app itself never needs a second factor
+again: its own signed sign-in already is one.
+
+---
+
 ## Cleaning up after an account
 
 Deleting an account removes far more than the rows `auth` owns. Before it deletes
@@ -94,7 +138,9 @@ missing:
 `scheduling` · `sqlalchemy` · `security` · `events` · `cache` · `jwt`
 
 It targets WebFluid `1.0.0b1` or newer and installs a few Python packages for its
-security features (`pyotp`, `segno`, `webauthn`, and `pydantic[email]`).
+security features (`pyotp`, `segno`, `webauthn`, and `pydantic[email]`). The
+mobile device keys are handled with `cryptography`, which the framework already
+brings in.
 
 ---
 

@@ -9,8 +9,11 @@ from ..utils import attached_user
 from ...schemas.v1 import UpdateUser
 
 
-async def available_request(user: User = s.user_service.current_user):
-    return { "available": user is not None }
+async def available_request(request: Request, user: User = s.user_service.current_user):
+    return {
+        "available": user is not None,
+        "mobile_2fa": user is None and "mobile_approval" in request.session
+    }
 
 
 async def get_request(user: User = s.user_service.require_2fa):

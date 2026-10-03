@@ -201,3 +201,26 @@ class WebAuthnVerify(BaseModel):
 
 class WebAuthnDelete(BaseModel):
     credential_id: str
+
+
+class MobileKeys(BaseModel):
+    enc_pubkey: str = Field(max_length=64)
+    sig_pubkey: str = Field(max_length=64)
+    challenge: str = Field(max_length=64)
+    signature: str = Field(max_length=128)
+
+
+class MobileLogin(BaseModel):
+    user_id: int
+    challenge: str = Field(max_length=64)
+    signature: str = Field(max_length=128)
+
+
+class MobileDenial(BaseModel):
+    user_id: int
+    approval: str = Field(max_length=32)
+    signature: str = Field(max_length=128)
+
+
+class MobileApproval(MobileDenial):
+    number: int = Field(ge=10, le=99)

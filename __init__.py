@@ -34,7 +34,9 @@ async def before_enable(fluid: Fluid):
     bind = fluid.config.get("SECURITY_MODELS_DB_BIND")
     if bind:
         from .models.token import Token
+        from .models.mobile import MobileSecurity
         Token.set_bind(bind)
+        MobileSecurity.set_bind(bind)
 
     from .jobs import get_watcher, cache_revoked
     scheduler.add_job(get_watcher(fluid), CronTrigger(hour=0))

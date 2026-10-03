@@ -167,6 +167,50 @@
     "Unknown credential",
     "Unbekannter Schlüssel"
   ],
+  "INVALID_KEY": [
+    "Invalid device key",
+    "Ungültiger Geräteschlüssel"
+  ],
+  "INVALID_CHALLENGE": [
+    "Invalid or expired challenge",
+    "Ungültige oder abgelaufene Anfrage"
+  ],
+  "INVALID_SIGNATURE": [
+    "Invalid signature",
+    "Ungültige Signatur"
+  ],
+  "MOBILE_ALREADY_ENROLLED": [
+    "Another device is already linked to this account",
+    "Mit diesem Konto ist bereits ein anderes Gerät verknüpft"
+  ],
+  "MOBILE_AUTH_FAILED": [
+    "This device could not be verified",
+    "Dieses Gerät konnte nicht verifiziert werden"
+  ],
+  "REAUTHENTICATION_REQUIRED": [
+    "Sign in with your password to link a new device",
+    "Melde dich mit deinem Passwort an, um ein neues Gerät zu verknüpfen"
+  ],
+  "MOBILE_APPROVAL_PENDING": [
+    "Waiting for approval in the app",
+    "Warte auf die Bestätigung in der App"
+  ],
+  "MOBILE_APPROVAL_DENIED": [
+    "The sign-in was denied",
+    "Die Anmeldung wurde abgelehnt"
+  ],
+  "MOBILE_APPROVAL_EXPIRED": [
+    "The sign-in request expired",
+    "Die Anmeldeanfrage ist abgelaufen"
+  ],
+  "MOBILE_APPROVAL_UNAVAILABLE": [
+    "This sign-in request is no longer open",
+    "Diese Anmeldeanfrage ist nicht mehr offen"
+  ],
+  "WRONG_NUMBER": [
+    "That is not the number shown at the sign-in",
+    "Das ist nicht die Zahl, die bei der Anmeldung angezeigt wird"
+  ],
   "The part after the @-sign is not valid. It should have a period.": [
     "The part after the @-sign is not valid. It should have a period.",
     "Der Abschnitt nach dem @ ist ungültig. Er sollte einen Punkt enthalten."

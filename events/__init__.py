@@ -10,3 +10,6 @@ def setup(a: "Additive"):
 
     from .autodelete import handle_event as autodelete_event
     events.event(a.unique_name("delete:unconfirmed"))(autodelete_event)
+
+    from .mobile import setup as setup_mobile
+    setup_mobile(a)
