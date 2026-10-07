@@ -116,6 +116,12 @@ the day the phone is not at hand, which is also what makes a lost phone
 recoverable — keep one of them. The app itself never needs a second factor
 again: its own signed sign-in already is one.
 
+An additive that runs its own second factor on the device — `users` does, with a
+QR handshake that also hands the browser its decryption key — can take the
+approval over through the `auth_mobile:delegate` query. `auth` keeps holding the
+session in the open approval, but leaves the number and the push to the delegate,
+which settles the approval through `auth_mobile:resolve`.
+
 ---
 
 ## Cleaning up after an account

@@ -61,9 +61,11 @@ Signs a user in. Request: `LoginUser` (`username`, `password`). Establishes the
 session; may require a second factor (see 2FA).
 
 For an account with a mobile device the password alone establishes **nothing**:
-the answer is `{ "status": "mobile_2fa", "number": <10–99>, "expires": <seconds>,
-"fallback": bool }` instead of `{ "status": "ok" }`, and the session only holds
-the open approval — see *Mobile approval* below.
+the answer is `{ "status": "mobile_2fa", "delegated": false, "number": <10–99>,
+"expires": <seconds>, "fallback": bool }` instead of `{ "status": "ok" }`, and the
+session only holds the open approval — see *Mobile approval* below. When another
+additive took over the approval (see *Delegated approvals*), the answer carries
+`"delegated": true` and the approval's id as `approval` instead of a number.
 
 ### GET /api/v1/users/logout
 
@@ -228,9 +230,11 @@ Routes for the signing-in client (the session of the sign-in):
 
 - **GET /api/v1/users/2fa/mobile** — the approval's state (rate-limited
   120/minute): `{ "pending": false }` without one, otherwise
-  `{ "pending": true, "state", "number", "fallback", "expires" }` with `state`
-  one of `pending`, `approved`, `denied`, `cancelled`, `used` — or
-  `{ "pending": true, "state": "expired" }`. Poll it while waiting.
+  `{ "pending": true, "state", "number", "fallback", "delegated", "expires" }`
+  with `state` one of `pending`, `approved`, `denied`, `cancelled`, `used` — or
+  `{ "pending": true, "state": "expired" }`. A delegated approval has no number
+  and carries its id as `approval`, so a client finds its way back to the
+  delegate's flow after a reload. Poll it while waiting.
 - **POST /api/v1/users/2fa/mobile/complete** — turns an approved approval into
   the session, marked as having passed the second factor, and sets the CSRF
   cookie (rate-limited 20/minute). `409 MOBILE_APPROVAL_PENDING` while it is
@@ -239,7 +243,8 @@ Routes for the signing-in client (the session of the sign-in):
 - **POST /api/v1/users/2fa/mobile/fallback** — gives up on the device and opens
   an ordinary session that still has to pass TOTP, WebAuthn or a backup code
   (rate-limited 10/minute). Only offered — `fallback: true` — when the account
-  has one of them; `400 TWO_FA_NOT_SETUP` otherwise.
+  has one of them, or when the delegate declared the approval skippable;
+  `400 TWO_FA_NOT_SETUP` otherwise.
 - **POST /api/v1/users/2fa/mobile/cancel** — abandons the sign-in and clears the
   session.
 
@@ -266,8 +271,25 @@ Routes for the device:
   `signature`; rate-limited 30/minute) — rejects the sign-in, signed
   `auth_mobile:deny` / `<user_id>` / `<approval>`.
 
-`409 MOBILE_APPROVAL_UNAVAILABLE` for an approval that is no longer open and
-`401 INVALID_SIGNATURE` for a signature of anything but the account's device.
+`409 MOBILE_APPROVAL_UNAVAILABLE` for an approval that is no longer open or
+delegated, and `401 INVALID_SIGNATURE` for a signature of anything but the
+account's device.
+
+### Delegated approvals
+
+An additive that runs a second factor of its own on the account's device can take
+the approval over by registering the singleton query `auth_mobile:delegate` (see
+*Consumes*). `auth` then still opens the approval and holds the session in it —
+every rule above about the session carrying no user applies unchanged — but it
+neither picks a number nor pushes `auth_mobile:approval`, and the approval never
+shows up in `GET /api/v1/users/2fa/mobile/pending`. The device routes `approve`
+and `deny` answer `409 MOBILE_APPROVAL_UNAVAILABLE` for it.
+
+The delegate drives the approval through the `auth_mobile:approval-state` and
+`auth_mobile:resolve` queries (see *Provides*); the signing-in client completes,
+falls back or cancels through the same routes as above. Without a delegate, or
+when the delegate fails or answers anything but a dict, `auth` uses its own
+number matching.
 
 ## Mobile devices
 
@@ -494,8 +516,8 @@ keys.
 
 `auth`'s identity data is reached through the REST API. The queries below exist
 so that other additives can work with an account's mobile device without ever
-holding its keys. Both are **internal** — server-side only, never reachable over
-the events websocket.
+holding its keys. All of them are **internal** — server-side only, never reachable
+over the events websocket.
 
 ### auth_user-encrypt *(query)*
 
@@ -522,6 +544,27 @@ raises `TypeError`.
 Prefix every message with a contract name of your own, one per purpose — as
 `auth` does with `auth_mobile:login` and `auth_mobile:register` — so that a
 signature made for one purpose can never be replayed into another.
+
+### auth_mobile:fingerprint *(query)*
+
+The fingerprint of the account's device, as carried by `auth_mobile:approval`.
+Payload: `{ "user_id": <int> }`. Answers the fingerprint, or `null` when the
+account has no device. Lets a delegate address pushes to the device the same way
+`auth` does.
+
+### auth_mobile:approval-state *(query)*
+
+The state of an open approval. Payload: `{ "approval": <id> }`. Answers
+`{ "user_id", "device", "state", "delegated", "expires" }` — `device` being the
+fingerprint — or `null` for an unknown or expired approval.
+
+### auth_mobile:resolve *(query)*
+
+Settles a **delegated** approval. Payload:
+`{ "approval": <id>, "user_id": <int>, "approved": bool }`. Moves the approval to
+`approved` or `denied` and answers `true`; answers `false` when the approval is
+unknown, expired, not delegated, not pending or belongs to another account. The
+delegate must have verified the device's consent itself — `auth` trusts the call.
 
 ## Consumes
 
@@ -564,6 +607,16 @@ payload is the retention period in days (int). `auth` owns the deletion logic an
 exposes this as an inbound extension point — it does not schedule the signal
 itself. Accounts are selected by `created_at` older than the deadline and each
 one fans out `auth_user:delete` before it is removed.
+
+### auth_mobile:delegate *(query)*
+
+Requested when a password or provider sign-in of an account with a mobile device
+opens its approval. Payload: `{ "user_id": <int> }`. A singleton extension point:
+an additive that answers it with a dict takes the approval over (see *Delegated
+approvals*); `{ "skippable": true }` additionally allows the fallback for accounts
+without TOTP, WebAuthn or backup codes. A missing handler is not an error: `auth`
+then uses its own number matching, and does the same when the handler raises or
+answers anything but a dict.
 
 ### auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
 

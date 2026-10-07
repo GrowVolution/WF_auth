@@ -373,7 +373,7 @@ async def _approval(request: Request) -> tuple[str, dict]:
 
 async def _pending(approval: str, user_id: int) -> dict:
     state = await approvals.load(approval)
-    if not state or state.get("state") != "pending" or state.get("user_id") != user_id:
+    if not state or state.get("state") != "pending" or state.get("user_id") != user_id             or state.get("delegated"):
         raise HTTPException(status_code=409, detail="MOBILE_APPROVAL_UNAVAILABLE")
     return state
 
@@ -391,13 +391,16 @@ async def mobile_state(request: Request):
     state = await approvals.load(approval)
     if not state: return { "pending": True, "state": "expired" }
 
-    return {
+    response = {
         "pending": True,
         "state": state["state"],
         "number": state["number"],
         "fallback": state["fallback"],
+        "delegated": bool(state.get("delegated")),
         "expires": approvals.remaining(state)
     }
+    if state.get("delegated"): response["approval"] = approval
+    return response
 
 
 async def complete_mobile(request: Request):

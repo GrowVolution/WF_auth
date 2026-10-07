@@ -1,6 +1,7 @@
 from fastapi import Request
 from webfluid.core.ext import cache, events, security as s
 from webfluid.extensions.security.models import User
+from webfluid.utils.logging import factory as log_factory
 from typing import Optional
 import hashlib, json, re, secrets, time
 
@@ -70,12 +71,14 @@ async def pending(user_id: int) -> Optional[tuple[str, dict]]:
         approval = approval.decode("utf-8", "replace")
 
     state = await load(approval)
-    if not state or state.get("state") != "pending" or state.get("user_id") != user_id:
+    if not state or state.get("state") != "pending" or state.get("user_id") != user_id \
+            or state.get("delegated"):
         return None
     return approval, state
 
 
 def push(state: dict, approval: str):
+    if state.get("delegated"): return
     try:
         events.trigger(_name("mobile:approval"), {
             "device": state["device"],
@@ -86,28 +89,55 @@ def push(state: dict, approval: str):
     except ValueError: pass
 
 
+async def delegate(user_id: int) -> Optional[dict]:
+    name = _name("mobile:delegate")
+    try: answer = await events.request(name, { "user_id": user_id })
+    except Exception as exc:
+        if not (isinstance(exc, ValueError) and str(exc) == f"Query '{name}' does not exist."):
+            log_factory.exception(exc, f"[auth] The {name} handler failed, using the push approval.")
+        return None
+    return answer if isinstance(answer, dict) else None
+
+
 async def begin(request: Request, user: User, device: MobileSecurity) -> dict:
     approval = secrets.token_urlsafe(16)
+    delegated = await delegate(user.id)
     state = {
         "user_id": user.id,
         "device": fingerprint(device.sig_pubkey),
-        "number": secrets.randbelow(90) + 10,
+        "number": None if delegated else secrets.randbelow(90) + 10,
         "state": "pending",
         "attempts": 0,
-        "fallback": s.user_service.has_2fa(user),
+        "fallback": s.user_service.has_2fa(user) or bool(delegated and delegated.get("skippable")),
+        "delegated": delegated is not None,
         "expires_at": time.time() + APPROVAL_TTL
     }
 
     await store(approval, state)
-    await cache.aset(_user_key(user.id), approval, timeout=APPROVAL_TTL)
+    if not delegated:
+        await cache.aset(_user_key(user.id), approval, timeout=APPROVAL_TTL)
 
     request.session.clear()
     request.session["mobile_approval"] = approval
     push(state, approval)
 
-    return {
+    response = {
         "status": "mobile_2fa",
-        "number": state["number"],
         "expires": APPROVAL_TTL,
-        "fallback": state["fallback"]
+        "fallback": state["fallback"],
+        "delegated": state["delegated"]
     }
+    if delegated: response["approval"] = approval
+    else: response["number"] = state["number"]
+    return response
+
+
+async def resolve(approval: str, user_id: int, approved: bool) -> bool:
+    state = await load(approval)
+    if not state or not state.get("delegated") or state.get("state") != "pending" \
+            or state.get("user_id") != user_id:
+        return False
+
+    state["state"] = "approved" if approved else "denied"
+    await store(approval, state)
+    return True

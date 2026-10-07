@@ -1,3 +1,4 @@
+
 export function getCookie(name) {
     const cookies = document.cookie.split("; ")
 
