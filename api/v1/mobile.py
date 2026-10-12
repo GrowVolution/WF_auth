@@ -1,23 +1,28 @@
 from fastapi import Request, HTTPException
 from webfluid.core.ext import db, events, security as s
 from webfluid.extensions.security.models import User
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
 
 from ...models.mobile import MobileSecurity
-from ...services import mobile as service
+from ...services import mobile as service, keylog, outbox, actions
 from ...schemas.v1 import MobileKeys, MobileLogin
 
 
-def _status(device: Optional[MobileSecurity]) -> dict:
+def _status(device: Optional[MobileSecurity], state: dict) -> dict:
+    data = {
+        "account": state["account"],
+        "keylog": { "seq": state["seq"], "head": state["head"], "broken": state["broken"],
+                    "recovery": state["recovery"] is not None }
+    }
     if not device:
-        return { "enrolled": False, "enc_pubkey": None, "sig_pubkey": None }
+        return { "enrolled": False, "enc_pubkey": None, "sig_pubkey": None, **data }
 
     return {
         "enrolled": True,
         "enc_pubkey": device.enc_pubkey,
-        "sig_pubkey": device.sig_pubkey
+        "sig_pubkey": device.sig_pubkey,
+        **data
     }
 
 
@@ -33,6 +38,36 @@ async def _verify_keys(user: User, keys: MobileKeys):
     )
     if not service.verify(keys.sig_pubkey, message, keys.signature):
         raise HTTPException(status_code=401, detail="INVALID_SIGNATURE")
+
+
+def _matches(envelope: dict, keys: MobileKeys) -> bool:
+    statement = (envelope or {}).get("statement") or {}
+    return statement.get("type") == "device.bind" and statement.get("keys") == {
+        "sig": keys.sig_pubkey, "enc": keys.enc_pubkey
+    }
+
+
+async def _bind(user: User, keys: MobileKeys, allowed: tuple) -> dict:
+    envelope = keys.keylog
+    if envelope is None:
+        envelope = await keylog.host_statement(user.id, "device.bind",
+                                               { "sig": keys.sig_pubkey, "enc": keys.enc_pubkey }, keys.reset)
+        allow_host = True
+    else:
+        if not _matches(envelope, keys):
+            raise HTTPException(status_code=400, detail="KEYLOG_MISMATCH")
+        if (envelope.get("statement") or {}).get("authority") not in allowed:
+            raise HTTPException(status_code=400, detail="AUTHORITY_NOT_ALLOWED")
+        allow_host = False
+    try:
+        result = await keylog.append(user.id, envelope, allow_host=allow_host)
+    except keylog.KeylogError as exc:
+        status = 409 if exc.code in ("KEYLOG_CONFLICT", "MOBILE_ENROLLED") else 400
+        raise HTTPException(status_code=status, detail=exc.code)
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="KEYLOG_CONFLICT")
+    await outbox.flush()
+    return result
 
 
 def _trigger_replaced(user_id: int):
@@ -52,7 +87,27 @@ async def challenge_request(request: Request):
 
 
 async def status_request(user: User = s.user_service.require_2fa):
-    return _status(await service.device(user.id))
+    state = await keylog.anchors(user.id)
+    return _status(await service.device(user.id), state)
+
+
+async def keylog_request(user: User = s.user_service.require_2fa):
+    state = await keylog.anchors(user.id)
+    return {
+        "account": state["account"],
+        "origin": keylog.origin(),
+        "state": state,
+        "consistent": await keylog.consistent(user.id),
+        "statements": await keylog.history(user.id)
+    }
+
+
+async def actions_request(user: User = s.user_service.require_2fa):
+    return {
+        "account": keylog.handle(user.id),
+        "devices": await actions.heads(user.id),
+        "recent": await actions.history(user.id, 100)
+    }
 
 
 async def register_request(
@@ -63,16 +118,8 @@ async def register_request(
         raise HTTPException(status_code=409, detail="MOBILE_ALREADY_ENROLLED")
 
     await _verify_keys(user, keys)
-
-    try:
-        async with db.async_executor(model=MobileSecurity) as e:
-            await e.insert(MobileSecurity(
-                user.id, keys.enc_pubkey, keys.sig_pubkey
-            ), True)
-    except IntegrityError:
-        raise HTTPException(status_code=409, detail="MOBILE_ALREADY_ENROLLED")
-
-    return { "status": "ok" }
+    result = await _bind(user, keys, ("self", "recovery"))
+    return { "status": "ok", "keylog": { "seq": result["seq"], "hash": result["hash"], "flags": result["flags"] } }
 
 
 async def replace_request(
@@ -84,25 +131,18 @@ async def replace_request(
 
     await _verify_keys(user, keys)
 
-    async with db.async_executor(model=MobileSecurity) as e:
-        result = await e.exec(select(MobileSecurity).where(
-            MobileSecurity.uid == user.id
-        ))
-        device = result.first()
+    state = await keylog.anchors(user.id)
+    if state["device"] == { "sig": keys.sig_pubkey, "enc": keys.enc_pubkey }:
+        restored = not await keylog.consistent(user.id)
+        if restored:
+            async with db.async_executor(model=MobileSecurity) as e:
+                await keylog._mirror(e, user.id, state)
+        return { "status": "ok", "replaced": False, "restored": restored }
 
-        if not device:
-            replaced = False
-            await e.insert(MobileSecurity(
-                user.id, keys.enc_pubkey, keys.sig_pubkey
-            ))
-        else:
-            replaced = (device.enc_pubkey, device.sig_pubkey) != \
-                       (keys.enc_pubkey, keys.sig_pubkey)
-            device.enc_pubkey = keys.enc_pubkey
-            device.sig_pubkey = keys.sig_pubkey
-
-    if replaced: _trigger_replaced(user.id)
-    return { "status": "ok", "replaced": replaced }
+    result = await _bind(user, keys, ("device", "recovery"))
+    _trigger_replaced(user.id)
+    return { "status": "ok", "replaced": True,
+             "keylog": { "seq": result["seq"], "hash": result["hash"], "flags": result["flags"] } }
 
 
 async def login_request(request: Request, login: MobileLogin):

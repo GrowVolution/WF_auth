@@ -1,15 +1,17 @@
 from fastapi import Request, HTTPException
+from fastapi.responses import RedirectResponse
 from webfluid.core.ext import db, events, security as s
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from webfluid.extensions.security.models import (
     User, Identity
 )
+from typing import Optional
 
 from .create import _trigger
 from ..utils import normalized_claims
 from ...schemas.v1 import LoginUser
-from ...services import approval as approvals, mobile as devices
+from ...services import approval as approvals, mobile as devices, sso_app
 
 
 async def available_request(_ = s.user_service.require_user):
@@ -46,10 +48,16 @@ async def default_request(request: Request, login: LoginUser,
 
 async def oauth_request(
         request: Request, provider: str,
+        app: Optional[str] = None,
         client = s.oauth_service.client,
         _ = s.oauth_service.prepare_session
 ):
     from ... import additive
+    if app is not None:
+        if not await sso_app.ticket(provider, app):
+            raise HTTPException(status_code=400, detail="SSO_APP_EXPIRED")
+        request.session["sso_app"] = app
+
     redirect_uri = request.url_for(
         additive.unique_name("oauth_callback"),
         provider=provider
@@ -74,6 +82,11 @@ async def callback_request(
         userinfo = s.oauth_service.userinfo
 ):
     sub = str(userinfo["sub"])
+
+    app = request.session.pop("sso_app", None)
+    if app is not None and not await sso_app.ticket(provider, app):
+        request.session.clear()
+        raise HTTPException(status_code=400, detail="SSO_APP_EXPIRED")
 
     async with db.async_executor(model=User) as e:
         identities = await e.exec(select(Identity).options(
@@ -124,6 +137,13 @@ async def callback_request(
 
         else:
             user = identity.user
+
+        if app is not None:
+            request.session.clear()
+            try: target = await sso_app.issue(provider, app, user.id, identity is not None)
+            except sso_app.SsoAppError as exc:
+                raise HTTPException(status_code=400, detail=exc.code)
+            return RedirectResponse(target, status_code=303)
 
         device = request.session.pop("device", "mobile")
         phone = await devices.device(user.id) if identity else None

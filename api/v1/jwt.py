@@ -9,32 +9,76 @@ from sqlalchemy import select
 from ...schemas.v1 import CreateToken, UpdateToken
 from ...models.token import Token
 
+NAME_LENGTH = 64
+GRANT_LENGTH = 128
+GRANT_COUNT = 256
+
+
+def _name(value) -> str:
+    name = value.strip() if isinstance(value, str) else ""
+    if not name or len(name) > NAME_LENGTH:
+        raise HTTPException(status_code=400, detail="INVALID_TOKEN_NAME")
+    return name
+
+
+def _payload(payload: dict) -> dict:
+    if set(payload) - { "permissions" }:
+        raise HTTPException(status_code=400, detail="INVALID_TOKEN_PAYLOAD")
+    grants = payload.get("permissions", [])
+    if not isinstance(grants, list) or len(grants) > GRANT_COUNT or not all(
+        isinstance(grant, str) and 0 < len(grant) <= GRANT_LENGTH for grant in grants
+    ):
+        raise HTTPException(status_code=400, detail="INVALID_TOKEN_PAYLOAD")
+    return { "permissions": list(dict.fromkeys(grants)) }
+
+
+def _days(expires) -> int:
+    config = FluidContext.current().fluid.config
+    if expires is None: return int(config["JWT_EXPIRY_DAYS"])
+    if isinstance(expires, bool) or not 0 < expires <= int(config.get("AUTH_JWT_MAX_DAYS", 365)):
+        raise HTTPException(status_code=400, detail="INVALID_EXPIRY")
+    return expires
+
+
+def _iat(value: str) -> datetime:
+    try: return datetime.fromisoformat(value)
+    except (TypeError, ValueError): raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
+
+
+async def _owned(e, user_id: int, iat: datetime) -> Token:
+    result = await e.exec(select(Token).where(
+        Token.uid == user_id,
+        Token.iat == iat,
+        Token.revoked == False
+    ))
+    token = result.first()
+    if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
+    return token
+
 
 async def create_request(
         create: CreateToken, user = s.user_service.require_2fa
 ):
-    ctx = FluidContext.current()
+    name = _name(create.name)
+    payload = _payload(create.payload)
+    days = _days(create.expires)
 
     async with db.ensured_async_executor(model=Token) as e:
         result = await e.exec(select(Token).where(
             Token.uid == user.id,
-            Token.name == create.name,
+            Token.name == name,
             Token.revoked == False
         ))
         if result.first(): raise HTTPException(status_code=400, detail="TOKEN_EXISTS")
 
         t = await e.insert(Token(
-            user.id, create.name,
-            datetime.now(UTC) + timedelta(
-                days=create.expires or ctx.fluid.config.get("JWT_EXPIRY_DAYS", 30)
-            )
+            user.id, name, datetime.now(UTC) + timedelta(days=days)
         ), True)
 
-        payload = create.payload
         payload["sub"] = str(user.id)
         payload["jti"] = str(t.id)
 
-    token = await jwt.aencode(payload, expire=create.expires)
+    token = await jwt.aencode(payload, expire=days)
     return { "token": token }
 
 
@@ -52,24 +96,21 @@ async def list_request(user = s.user_service.require_2fa):
 
 
 async def patch_request(patch: UpdateToken, user = s.user_service.require_2fa):
+    name = _name(patch.name)
+    iat = _iat(patch.iat)
+
     async with db.ensured_async_executor(model=Token) as e:
-        iat = datetime.fromisoformat(patch.iat)
+        token = await _owned(e, user.id, iat)
+
         result = await e.exec(select(Token).where(
             Token.uid == user.id,
-            Token.name == patch.name,
-            Token.iat != iat
+            Token.name == name,
+            Token.revoked == False,
+            Token.id != token.id
         ))
         if result.first(): raise HTTPException(status_code=400, detail="TOKEN_EXISTS")
 
-        result = await e.exec(select(Token).where(
-            Token.iat == iat,
-            Token.revoked == False
-        ))
-        token = result.first()
-        if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
-        if token.uid != user.id: raise HTTPException(status_code=403, detail="FORBIDDEN")
-
-        token.name = patch.name
+        token.name = name
 
     return { "status": "ok" }
 
@@ -103,14 +144,10 @@ async def metadata_request(request: Request):
 
 
 async def delete_request(delete: UpdateToken, user = s.user_service.require_2fa):
-    async with db.ensured_async_executor(model=Token) as e:
-        result = await e.exec(select(Token).where(
-            Token.iat == datetime.fromisoformat(delete.iat)
-        ))
-        token = result.first()
-        if not token: raise HTTPException(status_code=400, detail="UNKNOWN_TOKEN")
-        if token.uid != user.id: raise HTTPException(status_code=403, detail="FORBIDDEN")
+    iat = _iat(delete.iat)
 
+    async with db.ensured_async_executor(model=Token) as e:
+        token = await _owned(e, user.id, iat)
         token.revoked = True
         token_id, delta = token.id, token.exp.replace(tzinfo=UTC) - datetime.now(UTC)
 

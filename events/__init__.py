@@ -1,4 +1,5 @@
 from webfluid.core.ext import events
+from webfluid.utils import enabled
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,3 +14,7 @@ def setup(a: "Additive"):
 
     from .mobile import setup as setup_mobile
     setup_mobile(a)
+
+    if enabled("peering"):
+        from .integrity import provide
+        events.query("peering_integrity", False)(provide)

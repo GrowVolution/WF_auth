@@ -18,6 +18,13 @@ class DefaultConfig:
 
     AUTH_ADMIN_ROLE_REQUIRES_2FA = True
 
+    AUTH_LEDGER_FLUSH_INTERVAL = 60
+
+    AUTH_SSO_APP_REDIRECTS = []
+    AUTH_SSO_APP_TTL = 600
+
+    AUTH_JWT_MAX_DAYS = 365
+
 
 @register_config()
 class Config(MyConfig, DefaultConfig): pass

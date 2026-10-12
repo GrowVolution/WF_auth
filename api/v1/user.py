@@ -90,6 +90,20 @@ async def purge(user_id: int) -> bool:
 
 
 async def delete_request(request: Request, user: User = s.user_service.require_2fa):
+    from ...services import actions, outbox
+    try:
+        envelope = actions.from_header(request.headers.get(actions.HEADER))
+    except actions.ActionError as exc:
+        raise HTTPException(status_code=400, detail=exc.code)
+    if request.session.get("mobile") or envelope is not None:
+        if envelope is None:
+            raise HTTPException(status_code=401, detail="ACTION_SIGNATURE_REQUIRED")
+        try:
+            await actions.accept(user.id, envelope, "auth:account.delete", "auth:account", {})
+        except actions.ActionError as exc:
+            raise HTTPException(status_code=401, detail=exc.code)
+        await outbox.flush()
+
     await purge(user.id)
 
     async with db.ensured_async_executor(model=User) as e:

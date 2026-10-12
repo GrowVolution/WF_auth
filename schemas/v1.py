@@ -53,6 +53,16 @@ class LoginUser(BaseModel):
     password: str
 
 
+class SsoAppStart(BaseModel):
+    redirect: str
+    challenge: str
+
+
+class SsoAppExchange(BaseModel):
+    code: str
+    verifier: str
+
+
 class UserResponse(UserSchema):
     id: int
     email: Optional[EmailStr]
@@ -208,6 +218,8 @@ class MobileKeys(BaseModel):
     sig_pubkey: str = Field(max_length=64)
     challenge: str = Field(max_length=64)
     signature: str = Field(max_length=128)
+    keylog: Optional[dict] = None
+    reset: bool = False
 
 
 class MobileLogin(BaseModel):

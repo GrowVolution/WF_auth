@@ -25,12 +25,19 @@ def setup(a: "Additive", f: "Fluid"):
     )
     v1.post("/users/login/available")(login_available)
     v1.post("/users/login")(login_user)
-    v1.get("/{provider}/login")(oauth_login)
+    v1.get("/{provider}/login", name=a.unique_name("oauth_login"))(oauth_login)
     v1.api_route(
         "/{provider}/login/callback",
         methods=["GET", "POST"],
         name=a.unique_name("oauth_callback")
     )(oauth_callback)
+
+    from .sso_app import (
+        start_request as sso_app_start,
+        exchange_request as sso_app_exchange
+    )
+    v1.post("/{provider}/app")(f.limit("10/minute")(sso_app_start))
+    v1.post("/{provider}/app/exchange")(f.limit("20/minute")(sso_app_exchange))
 
     from .logout import (
         default_request as logout_user
@@ -191,10 +198,14 @@ def setup(a: "Additive", f: "Fluid"):
         status_request as mobile_status,
         register_request as register_mobile,
         replace_request as replace_mobile,
-        login_request as mobile_login
+        login_request as mobile_login,
+        keylog_request as mobile_keylog,
+        actions_request as mobile_actions
     )
     v1.post("/mobile/challenge")(f.limit("30/minute")(mobile_challenge))
     v1.get("/mobile")(mobile_status)
+    v1.get("/mobile/keylog")(mobile_keylog)
+    v1.get("/mobile/actions")(mobile_actions)
     v1.post("/mobile")(f.limit("10/hour")(register_mobile))
     v1.put("/mobile")(f.limit("5/hour")(replace_mobile))
     v1.post("/mobile/login")(f.limit("20/minute")(mobile_login))

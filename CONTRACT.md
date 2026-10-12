@@ -91,7 +91,10 @@ how a client walks the caller out of those states.
 `GET` responds with `UserResponse`. `PATCH` accepts `UpdateUser` (`username`,
 `current_password`, `new_password`) — **the email address is not part of it**;
 the address lifecycle belongs to `/verification/email`. `DELETE` fans out
-`auth_user:delete` before removing the row.
+`auth_user:delete` before removing the row. From a session opened by a device
+login, `DELETE` requires a signed action `auth:account.delete` on target
+`auth:account` in the header `X-WF-Action` (`401 ACTION_SIGNATURE_REQUIRED`,
+`400 INVALID_ACTION`, `401` with the verification code).
 
 ### Verification
 
@@ -157,17 +160,54 @@ provider.
 - **GET /api/v1/{provider}/connect** and **GET|POST /api/v1/{provider}/connect/callback**
   — link a provider to the signed-in account.
 
+### Sign-in from a native app
+
+A native app never shows the provider in an embedded web view (RFC 8252): it opens
+the sign-in in the system browser and receives a single-use code on a private-use
+redirect it registered, bound to a PKCE verifier only the app holds (RFC 7636).
+The browser itself is never signed in.
+
+- **POST /api/v1/{provider}/app** — `SsoAppStart` (`redirect`, `challenge`;
+  rate-limited 10/minute). `challenge` is the base64url SHA-256 of the app's
+  verifier (43 characters). `redirect` must be listed exactly in
+  `AUTH_SSO_APP_REDIRECTS` (default `[]`, which turns the flow off). Answers
+  `{ "ticket", "url", "expires" }`; the ticket lives `AUTH_SSO_APP_TTL` seconds
+  (600). `400 SSO_APP_DISABLED`, `400 INVALID_REDIRECT`,
+  `400 INVALID_CODE_CHALLENGE`, `400 UNKNOWN_PROVIDER`.
+- **GET /api/v1/{provider}/login?device=mobile&app=<ticket>** — the `url` the app
+  opens in the system browser. `400 SSO_APP_EXPIRED` for an unknown or expired
+  ticket. After the provider, the callback does not sign the browser in: it
+  consumes the ticket, issues a code that is valid for 120 seconds and redirects
+  (`303`) to `<redirect>?code=…&ticket=…`.
+- **POST /api/v1/{provider}/app/exchange** — `SsoAppExchange` (`code`,
+  `verifier`; rate-limited 20/minute), sent by the app's own HTTP client. The code
+  is consumed before it is checked, so a wrong verifier burns it; the SHA-256 of
+  `verifier` must equal the challenge (`400 INVALID_CODE` otherwise). On success
+  the app's session is signed in exactly like a password login — including the
+  mobile approval of an account that already has a device
+  (`{ "status": "mobile_2fa", … }`).
+
 ## Personal JWT Tokens
 
 Programmatic-access tokens for the authenticated user. These endpoints back a
 personal-token management UI.
 
 - **POST /api/v1/users/jwt** — issue a token. Request: `CreateToken`
-  (`name`, `payload`, optional `expires`).
-- **GET /api/v1/users/jwts** — list the user's tokens (`Tokens`).
+  (`name`, `payload`, optional `expires`). `name` is trimmed and must be 1–64
+  characters (`400 INVALID_TOKEN_NAME`) and unique among the user's live tokens
+  (`400 TOKEN_EXISTS`). `payload` may only carry `permissions`, a list of at most
+  256 grant strings of up to 128 characters (`400 INVALID_TOKEN_PAYLOAD`); `sub`
+  and `jti` are set by the server. `expires` is the lifetime in days, 1 to
+  `AUTH_JWT_MAX_DAYS` (365), defaulting to `JWT_EXPIRY_DAYS`
+  (`400 INVALID_EXPIRY`). Answers `{ "token" }`.
+- **GET /api/v1/users/jwts** — list the user's live tokens as
+  `[{ "name", "exp", "iat" }]`.
 - **GET /api/v1/users/jwt/metadata** — issuance metadata for the token UI.
-- **PATCH /api/v1/users/jwt** — update a token (`UpdateToken`).
-- **DELETE /api/v1/users/jwt** — revoke a token.
+- **PATCH /api/v1/users/jwt** — rename a token (`UpdateToken`: `iat`, `name`).
+  `iat` identifies one of the caller's live tokens; anything else — another
+  user's token, a revoked one, an unparsable value — is `400 UNKNOWN_TOKEN`.
+- **DELETE /api/v1/users/jwt** — revoke one of the caller's live tokens
+  (`UpdateToken`: `iat`), with the same `400 UNKNOWN_TOKEN`.
 
 ## Two-Factor Authentication
 
@@ -312,8 +352,23 @@ first request that presents it, whether that request succeeds or not.
 ### GET /api/v1/mobile
 
 The verification endpoint. Gated at `require_2fa`. Answers
-`{ "enrolled": bool, "enc_pubkey": str|null, "sig_pubkey": str|null }` for the
-caller's account, so a client can compare the server's copy with its own.
+`{ "enrolled": bool, "enc_pubkey": str|null, "sig_pubkey": str|null, "account",
+"keylog": { "seq", "head", "broken", "recovery": bool } }` for the caller's
+account, so a client can compare the server's copy — and the key-log head — with
+its own.
+
+### GET /api/v1/mobile/keylog
+
+Gated at `require_2fa`. Answers `{ account, origin, state, consistent,
+statements }`: the pseudonymous account handle, the origin it is derived from,
+the replayed anchors (`seq`, `head`, `device`, `recovery`, `browsers`, `broken`),
+whether the stored device matches the log, and every statement with its stored
+verification flags.
+
+### GET /api/v1/mobile/actions
+
+Gated at `require_2fa`. Answers `{ account, devices, recent }`: the head of every
+device's action chain and the last 100 signed actions with their results.
 
 ### POST /api/v1/mobile
 
@@ -334,6 +389,14 @@ auth_mobile:register
 `409 MOBILE_ALREADY_ENROLLED` when the account already has a device;
 `400 INVALID_KEY`, `401 INVALID_CHALLENGE` and `401 INVALID_SIGNATURE` otherwise.
 
+`MobileKeys` also takes `keylog`: the `device.bind` statement for the new keys,
+signed by the keys themselves and by the authority `self` (first binding) or
+`recovery` (the account's recovery key). Without it the server writes a
+host-asserted statement. `400 KEYLOG_MISMATCH` when it binds other keys,
+`400 AUTHORITY_NOT_ALLOWED`, `409 KEYLOG_CONFLICT` when the log moved on, and the
+verification codes of the key log. Answers
+`{ "status": "ok", "keylog": { "seq", "hash", "flags" } }`.
+
 ### PUT /api/v1/mobile
 
 Registers or **replaces** the device (`MobileKeys`, same message, rate-limited
@@ -343,7 +406,11 @@ login: only a traditional sign-in (password or provider, plus the second factor)
 may move an account to other keys. This is how a client restores its own keys
 after the server lost or mixed them up, and how a new device takes over after a
 recovery. Answers `{ "status": "ok", "replaced": bool }`; when the keys actually
-changed it triggers `auth_mobile:replaced`.
+changed it triggers `auth_mobile:replaced`. Its `keylog` may be signed by the
+authority `device` (the current phone) or `recovery`; without one the replacement
+is recorded as host-asserted (`NO_PROOF_OF_POSSESSION`). Presenting the keys that
+are already bound answers `replaced: false` and `restored: true` when the stored
+device had drifted from the log and was restored from it.
 
 ### POST /api/v1/mobile/login
 
@@ -545,6 +612,37 @@ Prefix every message with a contract name of your own, one per purpose — as
 `auth` does with `auth_mobile:login` and `auth_mobile:register` — so that a
 signature made for one purpose can never be replayed into another.
 
+### auth_keylog:state *(query)*
+
+`{ "user_id": <int> }` → `{ account, seq, head, device, recovery, browsers, broken }`
+— the replayed key-log anchors of the account.
+
+### auth_keylog:append *(query)*
+
+`{ "user_id": <int>, "envelope": { statement, subject, authority }, "dry_run": bool }`
+→ `{ "ok": true, seq, hash, flags }` or `{ "ok": false, "code" }`. A dry run
+checks the statement against the current head without storing it (used by
+prepared recovery rotations). Statements whose timestamp is more than 30 minutes
+off are rejected.
+
+### auth_action:accept *(query)*
+
+`{ "user_id", "envelope": { action, signature }, "action", "target", "params" }`
+→ `{ "ok": true, "id", … }` or `{ "ok": false, "code" }`. Verifies a
+`wf-action-v1` action against the account's current device: signature, account,
+action and target, the committed `params`, sequence and chain, replay, validity
+window.
+
+### auth_action:result *(query)*
+
+`{ "id": <int>, "result": { target, state, … } }` → `true`. Records the outcome of
+an accepted action, so peers can check that the host applied what was signed.
+
+### auth_ledger:flush *(query)*
+
+Hands pending key statements and actions to `peering_record`; answers the number
+flushed. Runs every `AUTH_LEDGER_FLUSH_INTERVAL` seconds (60) on its own.
+
 ### auth_mobile:fingerprint *(query)*
 
 The fingerprint of the account's device, as carried by `auth_mobile:approval`.
@@ -607,6 +705,15 @@ payload is the retention period in days (int). `auth` owns the deletion logic an
 exposes this as an inbound extension point — it does not schedule the signal
 itself. Accounts are selected by `created_at` older than the deadline and each
 one fans out `auth_user:delete` before it is removed.
+
+### peering_integrity *(provider, only with `peering`)*
+
+`auth` answers the collector of the `peering` Additive with one self-reported
+record, `auth_utils_js`: the SHA-256 and size of `static/js/utils.js` — the
+request and CSRF helpers every page loads as `window.wf.adt.auth` — its URL and
+the Additive's version, provenance `unsigned`. Peers fetch the served file
+themselves and compare it with the record; there is no reference repository for
+it. Registered only when `peering` is enabled.
 
 ### auth_mobile:delegate *(query)*
 

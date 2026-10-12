@@ -18,3 +18,10 @@ def setup(a: "Additive"):
     events.query(a.unique_name("mobile:approval-state"))(state_query)
     events.query(a.unique_name("mobile:resolve"))(resolve_query)
     events.query(a.unique_name("mobile:fingerprint"))(fingerprint_query)
+
+    from .keylog import state_query, append_query, accept_query, result_query, flush_query
+    events.query(a.unique_name("keylog:state"))(state_query)
+    events.query(a.unique_name("keylog:append"))(append_query)
+    events.query(a.unique_name("action:accept"))(accept_query)
+    events.query(a.unique_name("action:result"))(result_query)
+    events.query(a.unique_name("ledger:flush"))(flush_query)

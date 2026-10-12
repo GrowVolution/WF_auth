@@ -218,5 +218,37 @@
   "Too many requests": [
     "Too many requests",
     "Zu viele Anfragen"
+  ],
+  "SSO_APP_DISABLED": [
+    "Single sign-on is not set up for apps",
+    "Single Sign-On ist für Apps nicht eingerichtet"
+  ],
+  "INVALID_REDIRECT": [
+    "This app is not allowed to receive sign-ins",
+    "Diese App darf keine Anmeldungen empfangen"
+  ],
+  "INVALID_CODE_CHALLENGE": [
+    "Invalid sign-in request",
+    "Ungültige Anmeldeanfrage"
+  ],
+  "SSO_APP_EXPIRED": [
+    "The sign-in has expired. Please start again in the app.",
+    "Die Anmeldung ist abgelaufen. Bitte starte sie in der App erneut."
+  ],
+  "INVALID_CODE": [
+    "The sign-in could not be completed",
+    "Die Anmeldung konnte nicht abgeschlossen werden"
+  ],
+  "INVALID_TOKEN_NAME": [
+    "The token name must be 1 to 64 characters long",
+    "Der Token-Name muss 1 bis 64 Zeichen lang sein"
+  ],
+  "INVALID_TOKEN_PAYLOAD": [
+    "Invalid token permissions",
+    "Ungültige Token-Berechtigungen"
+  ],
+  "INVALID_EXPIRY": [
+    "Invalid token lifetime",
+    "Ungültige Token-Laufzeit"
   ]
 }

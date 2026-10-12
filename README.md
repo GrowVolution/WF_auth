@@ -38,8 +38,12 @@ reusable in any application.
 - **Two-factor authentication** — time-based one-time passwords (TOTP) with QR
   provisioning, WebAuthn/passkey registration and login, and — once an account
   has a mobile device — sign-in approval on that device by number matching.
-- **Token issuance** — JSON Web Tokens for programmatic access, plus a scheduled
-  watcher that keeps revoked tokens out of circulation.
+- **Single sign-on** — sign-in and account linking through external OAuth
+  providers, in the browser and — following RFC 8252 — from native apps through the
+  system browser with a PKCE-bound, single-use code.
+- **Token issuance** — JSON Web Tokens for programmatic access, with a bounded
+  lifetime and a payload restricted to permission grants, plus a scheduled watcher
+  that keeps revoked tokens out of circulation.
 - **Mobile devices** — one device per account, bound by its public keys, which
   can afterwards open a session by signing a challenge instead of entering a
   password.
@@ -121,6 +125,34 @@ QR handshake that also hands the browser its decryption key — can take the
 approval over through the `auth_mobile:delegate` query. `auth` keeps holding the
 session in the open approval, but leaves the number and the push to the delegate,
 which settles the approval through `auth_mobile:resolve`.
+
+---
+
+## Key log and signed actions
+
+The keys of an account must not be something the server can swap unnoticed. Every
+change — binding a phone, anchoring a recovery key, binding or revoking a browser —
+is a statement in the account's **key log** (`wf-keylog-v1`): numbered,
+hash-chained, signed by the new key itself (proof of possession) and by an
+**authority** the log already knows — the account's device, its recovery key, or
+for the very first binding the account itself. A replacement the server performs
+without such a signature is still possible, so that nobody is locked out, but it
+is recorded as host-asserted (`NO_PROOF_OF_POSSESSION`) and visible to everyone.
+
+Changes the phone makes are **signed actions** (`wf-action-v1`): the device signs
+what it does — account, action, target, salted commitments of the values, a
+sequence number, the hash of its previous action and a validity window of at most
+15 minutes. `auth` rejects replays, gaps, forks, expired and foreign actions, and
+records the result. Deleting an account from a device session requires such an
+action (`auth:account.delete`).
+
+Account handles are pseudonymous (`a1.` + a hash of origin and user id). With the
+`peering` Additive enabled, statements and actions are handed to its signed
+ledger through an outbox, where independent peers replay them and must reach the
+same state — or flag the difference. Without it they stay in `auth`. The page
+script `static/js/utils.js`, which every page loads, is reported to `peering` as
+the integrity record `auth_utils_js`, so peers compare what the host serves with
+what it claims.
 
 ---
 
