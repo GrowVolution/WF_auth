@@ -3,8 +3,8 @@ from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 import json, re, time
 
-from .canonical import canonical_text, digest, CanonicalError
-from .crypto import verify, b64decode
+from ..utils.canonical import canonical_text, digest, CanonicalError
+from ..utils.crypto import verify, b64decode
 from . import keylog
 from ..models.keylog import ActionLog
 

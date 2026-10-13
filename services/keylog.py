@@ -3,8 +3,8 @@ from sqlalchemy import select
 from datetime import datetime, UTC
 import hashlib, json, re, time
 
-from .canonical import canonical_text, digest, CanonicalError
-from .crypto import b64encode, b64decode, verify, valid_keys, sig_key, enc_key
+from ..utils.canonical import canonical_text, digest, CanonicalError
+from ..utils.crypto import b64encode, b64decode, verify, sig_key, enc_key
 from ..models.keylog import KeyStatement
 from ..models.mobile import MobileSecurity
 
@@ -12,7 +12,9 @@ PROTOCOL = "wf-keylog-v1"
 SUBJECT_CONTEXT = "wf-keylog-v1:subject"
 AUTHORITY_CONTEXT = "wf-keylog-v1:authority"
 GENESIS = "0" * 64
-TYPES = ("device.bind", "device.revoke", "recovery.set", "browser.bind", "browser.revoke")
+TYPES = ("device.bind", "device.revoke", "recovery.set", "browser.bind", "browser.revoke", "browser.link",
+         "browser.unlink")
+REQUIRES_AUTHORITY = ("device.revoke", "browser.revoke", "browser.link", "browser.unlink")
 SIGNED_AUTHORITIES = ("self", "device", "recovery")
 CLOCK_SKEW = 1800
 
@@ -72,7 +74,7 @@ def signed(context: str, statement: dict, key: str | None, signature: str | None
 
 def empty(account: str) -> dict:
     return { "account": account, "seq": 0, "head": GENESIS, "device": None, "recovery": None,
-             "browsers": [], "broken": False }
+             "browsers": [], "links": [], "broken": False }
 
 
 def anchored(state: dict) -> bool:
@@ -116,7 +118,13 @@ def evaluate(state: dict, envelope: dict, allow_host: bool = False, stored: bool
     elif kind == "browser.revoke":
         if set(keys) != { "enc" } or keys["enc"] not in state["browsers"]: raise KeylogError("UNKNOWN_BROWSER_KEY")
     elif kind == "device.revoke":
-        if state["device"] is None: raise KeylogError("NOTHING_TO_REVOKE")
+        if state["device"] is None and not statement.get("reset"): raise KeylogError("NOTHING_TO_REVOKE")
+    elif kind == "browser.link":
+        if set(keys) != { "enc" } or not _valid_enc(keys["enc"]): raise KeylogError("INVALID_KEY")
+        if state["device"] is None: raise KeylogError("MOBILE_NOT_ENROLLED")
+        if keys["enc"] in state["links"]: raise KeylogError("LINK_EXISTS")
+    elif kind == "browser.unlink":
+        if set(keys) != { "enc" } or keys["enc"] not in state["links"]: raise KeylogError("UNKNOWN_LINK_KEY")
 
     flags = []
     if subject is not None:
@@ -129,7 +137,7 @@ def evaluate(state: dict, envelope: dict, allow_host: bool = False, stored: bool
             raise KeylogError("INVALID_SIGNATURE")
 
     if authority == "self":
-        if anchored(state) or kind in ("device.revoke", "browser.revoke"): raise KeylogError("AUTHORITY_REQUIRED")
+        if anchored(state) or kind in REQUIRES_AUTHORITY: raise KeylogError("AUTHORITY_REQUIRED")
     elif authority == "device":
         if not signed(AUTHORITY_CONTEXT, statement, (state["device"] or {}).get("sig"), signatures.get("authority")):
             raise KeylogError("INVALID_AUTHORITY")
@@ -138,7 +146,11 @@ def evaluate(state: dict, envelope: dict, allow_host: bool = False, stored: bool
             raise KeylogError("INVALID_AUTHORITY")
     elif authority == "host":
         if not allow_host: raise KeylogError("AUTHORITY_REQUIRED")
-        if anchored(state):
+        if kind == "browser.unlink":
+            flags.append({ "code": "HOST_ASSERTED_UNLINK", "severity": "normal" })
+        elif kind == "browser.link":
+            flags.append({ "code": "HOST_ASSERTED_LINK", "severity": "critical" })
+        elif anchored(state):
             flags.append({ "code": "HOST_ASSERTED_RESET" if statement.get("reset") else "HOST_ASSERTED_KEY_CHANGE",
                            "severity": "high" if statement.get("reset") else "critical" })
         else:
@@ -149,22 +161,30 @@ def evaluate(state: dict, envelope: dict, allow_host: bool = False, stored: bool
     else:
         raise KeylogError("INVALID_KEYLOG")
 
-    nxt = dict(state, seq=statement["seq"], head=own, browsers=list(state["browsers"]))
+    nxt = dict(state, seq=statement["seq"], head=own, browsers=list(state["browsers"]), links=list(state["links"]))
     if statement.get("reset") and authority == "host":
         nxt["recovery"] = None
         nxt["browsers"] = []
+        nxt["links"] = []
     if kind == "device.bind":
         if state["device"] is None or state["device"]["sig"] != keys["sig"]:
-            if authority in ("recovery", "host"): nxt["browsers"] = []
+            if authority in ("recovery", "host"):
+                nxt["browsers"] = []
+                nxt["links"] = []
         nxt["device"] = { "sig": keys["sig"], "enc": keys["enc"] }
     elif kind == "device.revoke":
         nxt["device"] = None
+        nxt["links"] = []
     elif kind == "recovery.set":
         nxt["recovery"] = keys["recovery"]
     elif kind == "browser.bind":
         if keys["enc"] not in nxt["browsers"]: nxt["browsers"].append(keys["enc"])
     elif kind == "browser.revoke":
         nxt["browsers"] = [key for key in nxt["browsers"] if key != keys["enc"]]
+    elif kind == "browser.link":
+        nxt["links"].append(keys["enc"])
+    elif kind == "browser.unlink":
+        nxt["links"] = [key for key in nxt["links"] if key != keys["enc"]]
     return nxt, flags
 
 
@@ -258,6 +278,14 @@ async def host_statement(uid: int, kind: str, keys: dict, reset: bool = False) -
     }
     if reset: statement["reset"] = True
     return { "protocol": PROTOCOL, "statement": statement, "signatures": { "subject": None, "authority": None } }
+
+
+async def close(uid: int) -> bool:
+    state = await anchors(uid)
+    if state["broken"] or not (anchored(state) or state["browsers"] or state["links"]): return False
+    keys = { "sig": state["device"]["sig"] } if state["device"] else {}
+    await append(uid, await host_statement(uid, "device.revoke", keys, reset=True), allow_host=True)
+    return True
 
 
 async def consistent(uid: int) -> bool:

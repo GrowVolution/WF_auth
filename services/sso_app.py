@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 from typing import Optional
 import asyncio, hashlib, hmac, json, re, secrets, time
 
-from .crypto import b64encode
+from ..utils.crypto import b64encode
 
 CODE_TTL = 120
 

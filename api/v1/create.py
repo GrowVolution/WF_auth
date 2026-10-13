@@ -10,6 +10,7 @@ from webfluid.extensions.security.models import (
 )
 from typing import Optional
 
+from ..utils import admit
 from ...schemas.v1 import CreateUser, InitialSetup
 
 
@@ -31,7 +32,7 @@ async def _create_user(create: CreateUser, e) -> User:
     return await e.insert(User(
         username=create.username,
         email=create.email,
-        psw_hash=s.hash_service.hash(create.password)
+        psw_hash=await s.hash_service.ahash(create.password)
     ), True)
 
 
@@ -85,6 +86,7 @@ async def setup_request(
             status_code=403,
             detail="SETUP_ALREADY_PERFORMED"
         )
+    await admit("setup")
 
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).limit(1))
@@ -127,7 +129,7 @@ async def setup_request(
         user = await e.insert(User(
             userdata.username,
             userdata.email,
-            s.hash_service.hash(userdata.password)
+            await s.hash_service.ahash(userdata.password)
         ), True)
         user.roles.append(role)
 
@@ -141,6 +143,7 @@ async def default_request(request: Request, create: CreateUser):
             status_code=400,
             detail="ROLES_NOT_ALLOWED"
         )
+    await admit("register")
 
     async with db.async_executor(model=User) as e:
         user = await _create_user(create, e)

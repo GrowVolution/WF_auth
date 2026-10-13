@@ -5,7 +5,7 @@ from webfluid.extensions.security.models import User, Role
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ..utils import attached_user
+from ..utils import attached_user, admit_credential
 from ...schemas.v1 import UpdateUser
 
 
@@ -47,14 +47,17 @@ async def get_request(user: User = s.user_service.require_2fa):
 
 
 async def update_request(
-        update: UpdateUser,
+        request: Request, update: UpdateUser,
         user: User = s.user_service.require_2fa
 ):
+    if update.new_password:
+        await admit_credential("password", user.id)
+
     if user.psw_hash:
         if update.new_password and not update.current_password:
             raise HTTPException(status_code=400, detail="MISSING_CURRENT_PASSWORD")
 
-        elif update.current_password and not s.hash_service.verify(
+        elif update.current_password and not await s.hash_service.averify(
                 user.psw_hash, update.current_password
         ):
             raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
@@ -72,21 +75,24 @@ async def update_request(
             user.username = update.username
 
         if update.new_password:
-            user.psw_hash = s.hash_service.hash(update.new_password)
+            user.psw_hash = await s.hash_service.ahash(update.new_password)
 
     return { "status": "ok" }
 
 
 async def purge(user_id: int) -> bool:
     from ... import additive
+    from ...services.retirement import retire
     try:
         results = await events.request(additive.unique_name("user:delete"), {
             "user_id": user_id
         })
     except ValueError:
-        return True
+        results = []
 
-    return all(result is not None for result in results)
+    if not all(result is not None for result in results): return False
+    await retire(user_id)
+    return True
 
 
 async def delete_request(request: Request, user: User = s.user_service.require_2fa):
@@ -104,7 +110,8 @@ async def delete_request(request: Request, user: User = s.user_service.require_2
             raise HTTPException(status_code=401, detail=exc.code)
         await outbox.flush()
 
-    await purge(user.id)
+    if not await purge(user.id):
+        raise HTTPException(status_code=500, detail="DELETION_INCOMPLETE")
 
     async with db.ensured_async_executor(model=User) as e:
         await e.delete(await attached_user(user, e))

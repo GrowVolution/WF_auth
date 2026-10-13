@@ -14,8 +14,8 @@ def setup(a: "Additive", f: "Fluid"):
         default_request as create_user
     )
     v1.get("/dev/setup")(setup_available)
-    v1.post("/dev/setup")(initial_setup)
-    v1.post("/users/create")(create_user)
+    v1.post("/dev/setup")(f.limit("5/minute")(initial_setup))
+    v1.post("/users/create")(f.limit("10/hour")(create_user))
 
     from .login import (
         available_request as login_available,
@@ -24,7 +24,7 @@ def setup(a: "Additive", f: "Fluid"):
         callback_request as oauth_callback
     )
     v1.post("/users/login/available")(login_available)
-    v1.post("/users/login")(login_user)
+    v1.post("/users/login")(f.limit("10/minute")(login_user))
     v1.get("/{provider}/login", name=a.unique_name("oauth_login"))(oauth_login)
     v1.api_route(
         "/{provider}/login/callback",
@@ -76,7 +76,7 @@ def setup(a: "Additive", f: "Fluid"):
     )
     v1.post("/users/reset/request")(f.limit("2/hour")(reset_request))
     v1.get("/users/reset")(reset_page)
-    v1.post("/users/reset")(reset_password)
+    v1.post("/users/reset")(f.limit("10/hour")(reset_password))
 
     from .user import (
         available_request as user_available,
@@ -87,7 +87,7 @@ def setup(a: "Additive", f: "Fluid"):
     from ...schemas.v1 import UserResponse
     v1.get("/users/me/available")(user_available)
     v1.get("/users/me", response_model=UserResponse)(get_user)
-    v1.patch("/users/me")(update_user)
+    v1.patch("/users/me")(f.limit("10/minute")(update_user))
     v1.delete("/users/me")(delete_user)
 
     from .jwt import (
@@ -175,15 +175,15 @@ def setup(a: "Additive", f: "Fluid"):
     from ...schemas.v1 import TOTPSetupResponse, BackupCodesResponse
     v1.get("/users/2fa")(two_fa_status)
     v1.post("/users/2fa/totp", response_model=TOTPSetupResponse)(request_totp)
-    v1.post("/users/2fa/totp/verify")(verify_totp)
+    v1.post("/users/2fa/totp/verify")(f.limit("10/minute")(verify_totp))
     v1.delete("/users/2fa/totp")(delete_totp)
     v1.post("/users/2fa/webauthn/register")(register_webauthn)
     v1.post("/users/2fa/webauthn/register/verify")(verify_webauthn_register)
     v1.post("/users/2fa/webauthn/verify")(authenticate_webauthn)
-    v1.post("/users/2fa/webauthn/verify/complete")(verify_webauthn)
+    v1.post("/users/2fa/webauthn/verify/complete")(f.limit("20/minute")(verify_webauthn))
     v1.delete("/users/2fa/webauthn")(delete_webauthn)
     v1.post("/users/2fa/backup", response_model=BackupCodesResponse)(request_backup)
-    v1.post("/users/2fa/backup/verify")(verify_backup)
+    v1.post("/users/2fa/backup/verify")(f.limit("10/minute")(verify_backup))
     v1.delete("/users/2fa/backup")(delete_backup)
     v1.get("/users/2fa/mobile")(f.limit("120/minute")(mobile_state))
     v1.post("/users/2fa/mobile/complete")(f.limit("20/minute")(complete_mobile))

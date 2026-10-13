@@ -6,6 +6,7 @@ from typing import Optional
 
 from ...models.mobile import MobileSecurity
 from ...services import mobile as service, keylog, outbox, actions
+from ..utils import admit
 from ...schemas.v1 import MobileKeys, MobileLogin
 
 
@@ -146,6 +147,7 @@ async def replace_request(
 
 
 async def login_request(request: Request, login: MobileLogin):
+    await admit("device")
     if not await service.consume_challenge(login.challenge):
         raise HTTPException(status_code=401, detail="INVALID_CHALLENGE")
 

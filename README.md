@@ -120,9 +120,9 @@ the day the phone is not at hand, which is also what makes a lost phone
 recoverable — keep one of them. The app itself never needs a second factor
 again: its own signed sign-in already is one.
 
-An additive that runs its own second factor on the device — `users` does, with a
-QR handshake that also hands the browser its decryption key — can take the
-approval over through the `auth_mobile:delegate` query. `auth` keeps holding the
+An additive that runs its own second factor on the device — for example a QR
+handshake that also hands the browser a decryption key — can take the approval
+over through the `auth_mobile:delegate` query. `auth` keeps holding the
 session in the open approval, but leaves the number and the push to the delegate,
 which settles the approval through `auth_mobile:resolve`.
 
@@ -131,8 +131,9 @@ which settles the approval through `auth_mobile:resolve`.
 ## Key log and signed actions
 
 The keys of an account must not be something the server can swap unnoticed. Every
-change — binding a phone, anchoring a recovery key, binding or revoking a browser —
-is a statement in the account's **key log** (`wf-keylog-v1`): numbered,
+change — binding a phone, anchoring a recovery key, binding or revoking a browser,
+linking a browser to the phone or releasing it — is a statement in the account's
+**key log** (`wf-keylog-v1`): numbered,
 hash-chained, signed by the new key itself (proof of possession) and by an
 **authority** the log already knows — the account's device, its recovery key, or
 for the very first binding the account itself. A replacement the server performs
@@ -165,6 +166,27 @@ data against an account registers a handler and removes its own — including th
 artefacts no database cascade reaches: files on disk, remote objects, rows behind
 association tables. `auth` neither knows nor cares who listens; if nobody does,
 the deletion simply proceeds.
+
+`auth` then retires what it owns itself: personal tokens are revoked and a key log
+that anchors anything is closed with a host reset. On SQLite a deleted id can be
+handed to the next account (in a `users` table created before WebFluid
+`1.0.0rc1`); that account starts with a clean key log instead of inheriting a
+device, a recovery key or linked browsers.
+
+---
+
+## Who may sign in
+
+Login, registration, the first setup, provider and app sign-ins and the device
+login ask the `auth_login:admit` query before they establish a session. Another
+additive can refuse a method — for example browser sign-ins on a deployment that
+only admits its app — without `auth` knowing why. Changing the password and
+setting up or removing a second factor ask `auth_credentials:admit` the same way,
+so an additive can keep sessions it opened itself from replacing the account's
+credentials. Login, registration and every
+second-factor check are rate-limited per address; TOTP and backup codes are also
+limited per account, a TOTP code works once, and password hashing runs on the
+hashing thread pool instead of the event loop.
 
 ---
 

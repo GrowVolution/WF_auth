@@ -146,7 +146,7 @@ async def update_request(
                 user.email_verified = True
 
         if update.new_password is not None:
-            user.psw_hash = s.hash_service.hash(update.new_password)
+            user.psw_hash = await s.hash_service.ahash(update.new_password)
 
         if update.roles is not None:
             if admin and user.id == admin.id and await s.user_service.is_admin(user):
@@ -175,7 +175,8 @@ async def delete_request(user_id: int, admin: User = resolver("users:write")):
     if admin and user_id == admin.id:
         raise HTTPException(status_code=400, detail="CANNOT_DELETE_SELF")
 
-    await purge(user_id)
+    if not await purge(user_id):
+        raise HTTPException(status_code=500, detail="DELETION_INCOMPLETE")
 
     async with db.ensured_async_executor(model=User) as e:
         user = await _get_user(user_id, e)

@@ -3,14 +3,14 @@ from sqlalchemy import select, delete
 from datetime import datetime, UTC, timedelta
 from typing import TYPE_CHECKING
 
-from ..models.token import Token
+from .models.token import Token
 
 if TYPE_CHECKING:
     from webfluid import Fluid
 
 
 def get_watcher(fluid: "Fluid"):
-    from .. import additive
+    from . import additive
     deadline_days = fluid.config.get("AUTH_TOKEN_EXPIRY_EVENT_DEADLINE", 5)
 
     async def watcher():

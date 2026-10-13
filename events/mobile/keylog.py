@@ -11,7 +11,8 @@ async def state_query(data: dict) -> dict:
     state = await keylog.anchors(user_id)
     return {
         "account": state["account"], "seq": state["seq"], "head": state["head"], "device": state["device"],
-        "recovery": state["recovery"], "browsers": state["browsers"], "broken": state["broken"]
+        "recovery": state["recovery"], "browsers": state["browsers"], "links": state["links"],
+        "broken": state["broken"]
     }
 
 
@@ -27,6 +28,21 @@ async def append_query(data: dict) -> dict:
         result = await keylog.append(user_id, envelope)
     except keylog.KeylogError as exc:
         return { "ok": False, "code": exc.code }
+    return { "ok": True, "seq": result["seq"], "hash": result["hash"], "flags": result["flags"] }
+
+
+async def unlink_query(data: dict) -> dict:
+    user_id, key = (data or {}).get("user_id"), (data or {}).get("key")
+    if not _int(user_id) or not isinstance(key, str):
+        raise TypeError("Expected { user_id: int, key: str }.")
+    state = await keylog.anchors(user_id)
+    if key not in state["links"]: return { "ok": True, "seq": None }
+    try:
+        result = await keylog.append(user_id, await keylog.host_statement(user_id, "browser.unlink", { "enc": key }),
+                                     allow_host=True)
+    except keylog.KeylogError as exc:
+        return { "ok": False, "code": exc.code }
+    await outbox.flush()
     return { "ok": True, "seq": result["seq"], "hash": result["hash"], "flags": result["flags"] }
 
 

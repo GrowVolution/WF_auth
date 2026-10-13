@@ -9,9 +9,10 @@ from webfluid.extensions.security.models import (
 from typing import Optional
 
 from .create import _trigger
-from ..utils import normalized_claims
+from ..utils import admit
+from ...utils.claims import normalized_claims
 from ...schemas.v1 import LoginUser
-from ...services import approval as approvals, mobile as devices, sso_app
+from ...services import approval as approvals, mobile as devices, sso_app, credentials
 
 
 async def available_request(_ = s.user_service.require_user):
@@ -22,6 +23,7 @@ async def default_request(request: Request, login: LoginUser,
                           current_user = s.user_service.current_user):
     if current_user:
         raise HTTPException(status_code=400, detail="ALREADY_LOGGED_IN")
+    await admit("password")
 
     async with db.async_executor(model=User) as e:
         users = await e.exec(select(User).where(or_(
@@ -29,13 +31,10 @@ async def default_request(request: Request, login: LoginUser,
             User.email == login.username
         )))
         user = users.first()
-        if not user:
-            raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
-
-        if not user.psw_hash:
+        if user and not user.psw_hash:
             raise HTTPException(status_code=400, detail="PROVIDER_ONLY")
 
-        if not s.hash_service.verify(user.psw_hash, login.password):
+        if not await credentials.verify(user.psw_hash if user else None, login.password):
             raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
 
         phone = await devices.device(user.id)
@@ -57,6 +56,8 @@ async def oauth_request(
         if not await sso_app.ticket(provider, app):
             raise HTTPException(status_code=400, detail="SSO_APP_EXPIRED")
         request.session["sso_app"] = app
+    else:
+        await admit("provider", provider)
 
     redirect_uri = request.url_for(
         additive.unique_name("oauth_callback"),
@@ -87,6 +88,8 @@ async def callback_request(
     if app is not None and not await sso_app.ticket(provider, app):
         request.session.clear()
         raise HTTPException(status_code=400, detail="SSO_APP_EXPIRED")
+    if app is None:
+        await admit("provider", provider)
 
     async with db.async_executor(model=User) as e:
         identities = await e.exec(select(Identity).options(

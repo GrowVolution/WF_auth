@@ -5,7 +5,7 @@ from webfluid.utils.logging import factory as log_factory
 from typing import Optional
 import hashlib, json, re, secrets, time
 
-from .crypto import b64decode, b64encode
+from ..utils.crypto import b64decode, b64encode
 from ..models.mobile import MobileSecurity
 
 APPROVAL_TTL = 120

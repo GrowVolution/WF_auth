@@ -48,8 +48,9 @@ Request: `InitialSetup` (`admin_user: CreateUser`, `admin_role: RoleSchema`).
 
 ### POST /api/v1/users/create
 
-Registers a new user. Request: `CreateUser` (`username`, `email`, `password`,
-`roles`). On success signs the caller in and emits `auth_user:created`.
+Registers a new user (rate-limited 10/hour). Request: `CreateUser` (`username`,
+`email`, `password`, `roles`). On success signs the caller in and emits
+`auth_user:created`. Subject to the *Login gate* (method `register`).
 
 ### POST /api/v1/users/login/available
 
@@ -57,8 +58,12 @@ Checks whether a given identity can sign in and by which method.
 
 ### POST /api/v1/users/login
 
-Signs a user in. Request: `LoginUser` (`username`, `password`). Establishes the
-session; may require a second factor (see 2FA).
+Signs a user in (rate-limited 10/minute). Request: `LoginUser` (`username`,
+`password`). Establishes the session; may require a second factor (see 2FA).
+Subject to the *Login gate* (method `password`). An unknown account and a wrong
+password take the same time and answer the same `401 INVALID_CREDENTIALS`: for an
+unknown account the password is verified against a decoy hash. An account that
+only signs in through a provider answers `400 PROVIDER_ONLY`.
 
 For an account with a mobile device the password alone establishes **nothing**:
 the answer is `{ "status": "mobile_2fa", "delegated": false, "number": <10–99>,
@@ -70,6 +75,57 @@ additive took over the approval (see *Delegated approvals*), the answer carries
 ### GET /api/v1/users/logout
 
 Ends the current session.
+
+### Login gate
+
+Every route that would establish a session from credentials first asks the
+fan-out query `auth_login:admit` (see *Consumes*) with
+`{ "method": <method>, "provider": <name, provider methods only> }`:
+
+| Method     | Route                                                                     |
+|------------|---------------------------------------------------------------------------|
+| `password` | `POST /api/v1/users/login`                                                |
+| `register` | `POST /api/v1/users/create`                                               |
+| `setup`    | `POST /api/v1/dev/setup`                                                  |
+| `provider` | `GET /api/v1/{provider}/login` and its callback, unless they carry an app ticket |
+| `app-sso`  | `POST /api/v1/{provider}/app` and `POST /api/v1/{provider}/app/exchange`  |
+| `device`   | `POST /api/v1/mobile/login`                                               |
+
+A handler answers `null` (or `true`) to admit, or a refusal code
+(`^[A-Z][A-Z0-9_]{2,63}$`), which `auth` answers as `403 <code>`; any other
+answer refuses with `403 LOGIN_NOT_ADMITTED`. A handler that raises refuses the
+sign-in with `503 LOGIN_GATE_FAILED`. Handlers run inside the request, so they
+can inspect it. Without a handler nothing changes.
+
+### Credential gate
+
+Every route that changes a credential of the signed-in account first asks the
+fan-out query `auth_credentials:admit` (see *Consumes*) with
+`{ "credential": <credential>, "user_id": <int> }`:
+
+| Credential     | Route                                                                                    |
+|----------------|------------------------------------------------------------------------------------------|
+| `password`     | `PATCH /api/v1/users/me` with `new_password`                                             |
+| `totp`         | `POST /api/v1/users/2fa/totp`, `DELETE /api/v1/users/2fa/totp`, and `POST /api/v1/users/2fa/totp/verify` while the secret is unconfirmed |
+| `webauthn`     | `POST /api/v1/users/2fa/webauthn/register`, `POST …/webauthn/register/verify`, `DELETE /api/v1/users/2fa/webauthn` |
+| `backup_codes` | `POST /api/v1/users/2fa/backup`, `DELETE /api/v1/users/2fa/backup`                       |
+
+Checking a second factor (a confirmed TOTP, a WebAuthn assertion, a backup code)
+changes nothing and is not gated. The gate runs before the current password or
+the submitted code is checked, after the 2FA routes' own `401 TWO_FA_REQUIRED`
+for an unverified session. Answers follow the login
+gate: `null` (or `true`) admits, a refusal code is answered as `403 <code>`, any
+other answer as `403 CREDENTIAL_NOT_ADMITTED`, and a handler that raises refuses
+the change with `503 CREDENTIAL_GATE_FAILED`. Without a handler nothing changes.
+
+### Session flags
+
+The session cookie carries `user_id` and `2fa_verified` (framework) and, for a
+session opened by the account's device or on its behalf, `mobile: true`. Such a
+session cannot replace the device keys (`PUT /api/v1/mobile` answers
+`403 REAUTHENTICATION_REQUIRED`) and deletes the account only with a signed
+action. `auth` sets it on `POST /api/v1/mobile/login`; another additive that opens
+a session on the device's behalf sets it as well.
 
 ### GET /api/v1/users/me/available
 
@@ -89,12 +145,24 @@ Reads, updates, or deletes the authenticated user. All three sit behind the full
 how a client walks the caller out of those states.
 
 `GET` responds with `UserResponse`. `PATCH` accepts `UpdateUser` (`username`,
-`current_password`, `new_password`) — **the email address is not part of it**;
-the address lifecycle belongs to `/verification/email`. `DELETE` fans out
-`auth_user:delete` before removing the row. From a session opened by a device
-login, `DELETE` requires a signed action `auth:account.delete` on target
-`auth:account` in the header `X-WF-Action` (`401 ACTION_SIGNATURE_REQUIRED`,
-`400 INVALID_ACTION`, `401` with the verification code).
+`current_password`, `new_password`; rate-limited 10/minute) — **the email address
+is not part of it**; the address lifecycle belongs to `/verification/email`. A
+`new_password` passes the *Credential gate* first.
+`DELETE` fans out `auth_user:delete` before removing the row and answers
+`500 DELETION_INCOMPLETE`, keeping the account, when a handler answers `None`.
+From a session carrying the `mobile` flag, `DELETE` requires a signed action
+`auth:account.delete` on target `auth:account` in the header `X-WF-Action`
+(`401 ACTION_SIGNATURE_REQUIRED`, `400 INVALID_ACTION`, `401` with the
+verification code).
+
+Once every handler succeeded, `auth` retires the account before the row is
+removed: every live personal token is revoked (its id stays on the revocation
+list until it would have expired), and a key log that anchors anything is closed
+with a host statement `device.revoke` carrying `reset: true`. The log of the
+pseudonymous handle therefore stays continuous, and a new account that is given
+the same id later (SQLite reuses the highest id in a `users` table created before
+WebFluid `1.0.0rc1`, which creates it with `AUTOINCREMENT`) starts without device,
+recovery key, browsers or links of its predecessor.
 
 ### Verification
 
@@ -145,8 +213,8 @@ gate nothing can open. The same fallback applies to registration.
 - **POST /api/v1/users/reset/request** — starts a reset for an email
   (rate-limited 2/hour). Request: `ResetRequest`. Emits `auth_send:reset`.
 - **GET /api/v1/users/reset** — renders the reset page from a `?token=`.
-- **POST /api/v1/users/reset** — sets the new password. Request: `ResetPassword`.
-  CSRF-protected.
+- **POST /api/v1/users/reset** — sets the new password (rate-limited 10/hour).
+  Request: `ResetPassword`. CSRF-protected.
 
 ## OAuth / SSO
 
@@ -229,21 +297,27 @@ Returns the user's configured second factors.
 - **POST /api/v1/users/2fa/totp** — begin TOTP setup (`TOTPSetupResponse`:
   `secret`, `uri`, `qr`).
 - **POST /api/v1/users/2fa/totp/verify** — confirm setup / verify a code
-  (`TOTPVerify`).
+  (`TOTPVerify`; rate-limited 10/minute). A code is accepted once: a code of the
+  same or an earlier time step is refused as `401 INVALID_OTP`.
 - **DELETE /api/v1/users/2fa/totp** — remove TOTP.
+
+Ten failed TOTP or backup-code verifications of an account within 15 minutes
+answer `429 TOO_MANY_ATTEMPTS` until the window passes, whatever address they
+come from; a successful verification resets the counter.
 
 ### WebAuthn / Passkeys
 
 - **POST /api/v1/users/2fa/webauthn/register** → **/register/verify** — register a
   credential (`WebAuthnRegister`).
 - **POST /api/v1/users/2fa/webauthn/verify** → **/verify/complete** — authenticate
-  with a credential (`WebAuthnVerify`).
+  with a credential (`WebAuthnVerify`; the completion is rate-limited 20/minute).
 - **DELETE /api/v1/users/2fa/webauthn** — remove a credential (`WebAuthnDelete`).
 
 ### Backup codes
 
 - **POST /api/v1/users/2fa/backup** — (re)generate codes (`BackupCodesResponse`).
-- **POST /api/v1/users/2fa/backup/verify** — consume a code (`BackupCodeVerify`).
+- **POST /api/v1/users/2fa/backup/verify** — consume a code (`BackupCodeVerify`;
+  rate-limited 10/minute, counted per account as above).
 - **DELETE /api/v1/users/2fa/backup** — remove backup codes.
 
 `GET /api/v1/users/2fa` also answers `mobile: bool` — whether the account has a
@@ -361,9 +435,28 @@ its own.
 
 Gated at `require_2fa`. Answers `{ account, origin, state, consistent,
 statements }`: the pseudonymous account handle, the origin it is derived from,
-the replayed anchors (`seq`, `head`, `device`, `recovery`, `browsers`, `broken`),
-whether the stored device matches the log, and every statement with its stored
-verification flags.
+the replayed anchors (`seq`, `head`, `device`, `recovery`, `browsers`, `links`,
+`broken`), whether the stored device matches the log, and every statement with
+its stored verification flags.
+
+### Key-log statements
+
+| Type             | Keys            | Authority                    | Effect                                     |
+|------------------|-----------------|------------------------------|--------------------------------------------|
+| `device.bind`    | `sig`, `enc`    | `self` (first), `device`, `recovery`, `host` | binds the device; a new device under `recovery` or `host` drops browsers and links |
+| `device.revoke`  | `sig` or none   | `device`, `recovery`, `host` | removes the device and every link          |
+| `recovery.set`   | `recovery`      | `self` (first), `device`, `recovery` | anchors the recovery authority     |
+| `browser.bind`   | `enc`           | `self` (first), `recovery`   | binds a browser vault (accounts without a device) |
+| `browser.revoke` | `enc`           | `device`, `recovery`         | removes a browser vault                    |
+| `browser.link`   | `enc`           | `device`, `recovery`         | links a browser to the account's device    |
+| `browser.unlink` | `enc`           | `device`, `recovery`, `host` | releases a linked browser                  |
+
+A host statement is recorded with a flag: `HOST_ASSERTED_BINDING` (normal) on an
+unanchored account, `HOST_ASSERTED_KEY_CHANGE` (critical) or, with `reset: true`,
+`HOST_ASSERTED_RESET` (high) on an anchored one, `HOST_ASSERTED_UNLINK` (normal)
+for a released link and `HOST_ASSERTED_LINK` (critical) for a link nobody signed.
+`auth` itself writes host statements only for device bindings without a proof
+and for releasing links; it never accepts a host link through its API.
 
 ### GET /api/v1/mobile/actions
 
@@ -541,7 +634,7 @@ and answers with the normalised field names
 the provider actually supplied are present**; a consumer must treat every field
 as optional. `full_name` is derived from first and last name only when both are
 present and the provider sent no name of its own; `auth` never guesses the other
-way round. The helper is `auth.api.utils.normalized_claims`.
+way round. The helper is `auth.utils.claims.normalized_claims`.
 
 The signal exists so that other additives can pick up the profile data an OAuth
 provider hands out once, at the only moment it is available. It is optional in
@@ -614,8 +707,8 @@ signature made for one purpose can never be replayed into another.
 
 ### auth_keylog:state *(query)*
 
-`{ "user_id": <int> }` → `{ account, seq, head, device, recovery, browsers, broken }`
-— the replayed key-log anchors of the account.
+`{ "user_id": <int> }` → `{ account, seq, head, device, recovery, browsers, links,
+broken }` — the replayed key-log anchors of the account.
 
 ### auth_keylog:append *(query)*
 
@@ -624,6 +717,15 @@ signature made for one purpose can never be replayed into another.
 checks the statement against the current head without storing it (used by
 prepared recovery rotations). Statements whose timestamp is more than 30 minutes
 off are rejected.
+
+### auth_keylog:unlink *(query)*
+
+`{ "user_id": <int>, "key": <x25519> }` → `{ "ok": true, seq, hash, flags }`,
+`{ "ok": true, "seq": null }` when the key is not linked, or
+`{ "ok": false, "code" }`. Appends the host statement `browser.unlink` for a
+linked browser key — the one host statement a consumer can cause, because
+releasing a link never grants anything. A link the account's device revokes
+itself goes through `auth_keylog:append` with its own signature.
 
 ### auth_action:accept *(query)*
 
@@ -714,6 +816,22 @@ request and CSRF helpers every page loads as `window.wf.adt.auth` — its URL an
 the Additive's version, provenance `unsigned`. Peers fetch the served file
 themselves and compare it with the record; there is no reference repository for
 it. Registered only when `peering` is enabled.
+
+### auth_login:admit *(query, fan-out)*
+
+Requested by every route of the *Login gate* before it establishes a session.
+Payload: `{ "method", "provider"? }`; the request is available to the handler
+through the request context. Register with `events.query("auth_login:admit", False)`
+and answer `None` to admit or a refusal code to refuse. A missing handler admits
+everything.
+
+### auth_credentials:admit *(query, fan-out)*
+
+Requested by every route of the *Credential gate* before it changes a credential.
+Payload: `{ "credential", "user_id" }`; the request is available to the handler
+through the request context. Register with
+`events.query("auth_credentials:admit", False)` and answer `None` to admit or a
+refusal code to refuse. A missing handler admits everything.
 
 ### auth_mobile:delegate *(query)*
 

@@ -115,7 +115,7 @@ async def reset_password(request: Request, reset: ResetPassword,
         if not user:
             raise HTTPException(status_code=400, detail="UNKNOWN_USER")
 
-        user.psw_hash = s.hash_service.hash(reset.password)
+        user.psw_hash = await s.hash_service.ahash(reset.password)
 
     request.session.clear()
     return { "status": "ok" }

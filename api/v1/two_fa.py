@@ -20,15 +20,15 @@ from webfluid.extensions.security.models import (
     User, TOTPSecret, WebAuthnCredential, BackupCode
 )
 from webfluid.utils.logging import factory as log_factory
-import io, json, secrets, pyotp, segno
+import io, json, secrets, pyotp, segno, time
 
-from ..utils import require_verified_session
+from ..utils import require_verified_session, admit_credential
 from ...schemas.v1 import (
     TOTPVerify, BackupCodeVerify,
     WebAuthnRegister, WebAuthnVerify, WebAuthnDelete,
     MobileApproval, MobileDenial
 )
-from ...services import approval as approvals, mobile as devices
+from ...services import approval as approvals, mobile as devices, credentials
 
 _REG_CHALLENGE = "webauthn_reg_challenge"
 _AUTH_CHALLENGE = "webauthn_auth_challenge"
@@ -46,6 +46,18 @@ def _config():
 
 def _mark_verified(request: Request):
     request.session["2fa_verified"] = True
+
+
+async def _throttled(scope: str, user_id: int):
+    if await credentials.exhausted(scope, user_id):
+        raise HTTPException(status_code=429, detail="TOO_MANY_ATTEMPTS")
+
+
+def _timecode(totp: pyotp.TOTP, code: str):
+    for offset in (-1, 0, 1):
+        moment = time.time() + offset * totp.interval
+        if secrets.compare_digest(totp.at(moment), str(code)): return int(moment // totp.interval)
+    return None
 
 
 async def _has_confirmed_totp(e, user: User) -> bool:
@@ -95,6 +107,7 @@ async def status(request: Request, user: User = s.user_service.require_user):
 
 async def request_totp(request: Request, user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("totp", user.id)
     issuer, *_ = _config()
 
     async with db.ensured_async_executor(model=TOTPSecret) as e:
@@ -137,10 +150,15 @@ async def verify_totp(request: Request, verify: TOTPVerify,
 
         if not totp.confirmed:
             require_verified_session(request, user)
+            await admit_credential("totp", user.id)
 
-        if not pyotp.TOTP(totp.secret).verify(verify.code, valid_window=1):
+        await _throttled("totp", user.id)
+        step = _timecode(pyotp.TOTP(totp.secret), verify.code)
+        if step is None or not await credentials.fresh_step(user.id, step):
+            await credentials.failed("totp", user.id)
             raise HTTPException(status_code=401, detail="INVALID_OTP")
 
+        await credentials.cleared("totp", user.id)
         totp.confirmed = True
 
     _mark_verified(request)
@@ -149,6 +167,7 @@ async def verify_totp(request: Request, verify: TOTPVerify,
 
 async def delete_totp(request: Request, user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("totp", user.id)
     async with db.ensured_async_executor(model=TOTPSecret) as e:
         result = await e.exec(select(TOTPSecret).where(
             TOTPSecret.user_id == user.id
@@ -165,6 +184,7 @@ async def delete_totp(request: Request, user: User = s.user_service.require_user
 
 async def register_webauthn(request: Request, user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("webauthn", user.id)
     _, rp_id, rp_name, _ = _config()
 
     async with db.ensured_async_executor(model=WebAuthnCredential) as e:
@@ -192,6 +212,7 @@ async def register_webauthn(request: Request, user: User = s.user_service.requir
 async def verify_webauthn_register(request: Request, register: WebAuthnRegister,
                                    user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("webauthn", user.id)
     _, rp_id, _, origin = _config()
     challenge = request.session.pop(_REG_CHALLENGE, None)
     if not challenge:
@@ -279,6 +300,7 @@ async def verify_webauthn(request: Request, verify: WebAuthnVerify,
 async def delete_webauthn(request: Request, delete: WebAuthnDelete,
                           user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("webauthn", user.id)
     async with db.ensured_async_executor(model=WebAuthnCredential) as e:
         result = await e.exec(select(WebAuthnCredential).where(
             WebAuthnCredential.user_id == user.id,
@@ -296,6 +318,7 @@ async def delete_webauthn(request: Request, delete: WebAuthnDelete,
 
 async def request_backup(request: Request, user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("backup_codes", user.id)
     cfg = FluidContext.current().fluid.config
     count = cfg.get("AUTH_2FA_BACKUP_CODE_COUNT", 10)
     digits = cfg.get("AUTH_2FA_BACKUP_CODE_DIGITS", 8)
@@ -314,13 +337,14 @@ async def request_backup(request: Request, user: User = s.user_service.require_u
         for _ in range(count):
             code = "".join(secrets.choice("0123456789") for _ in range(digits))
             codes.append(code)
-            await e.insert(BackupCode(user.id, s.hash_service.hash(code)))
+            await e.insert(BackupCode(user.id, await s.hash_service.ahash(code)))
 
     return { "codes": codes }
 
 
 async def verify_backup(request: Request, verify: BackupCodeVerify,
                         user: User = s.user_service.require_user):
+    await _throttled("backup", user.id)
     async with db.ensured_async_executor(model=BackupCode) as e:
         result = await e.exec(select(BackupCode).where(
             BackupCode.user_id == user.id,
@@ -329,14 +353,16 @@ async def verify_backup(request: Request, verify: BackupCodeVerify,
 
         matching = None
         for code in result.all():
-            if s.hash_service.verify(code.code_hash, verify.code):
+            if await s.hash_service.averify(code.code_hash, verify.code):
                 matching = code
                 break
 
         if not matching:
+            await credentials.failed("backup", user.id)
             raise HTTPException(status_code=401, detail="INVALID_BACKUP_CODE")
 
         matching.used = True
+    await credentials.cleared("backup", user.id)
 
     _mark_verified(request)
     return { "status": "ok" }
@@ -344,6 +370,7 @@ async def verify_backup(request: Request, verify: BackupCodeVerify,
 
 async def delete_backup(request: Request, user: User = s.user_service.require_user):
     require_verified_session(request, user)
+    await admit_credential("backup_codes", user.id)
     async with db.ensured_async_executor(model=BackupCode) as e:
         result = await e.exec(select(BackupCode).where(
             BackupCode.user_id == user.id
