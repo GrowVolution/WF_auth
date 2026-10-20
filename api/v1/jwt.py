@@ -151,8 +151,6 @@ async def delete_request(delete: UpdateToken, user = s.user_service.require_2fa)
         token.revoked = True
         token_id, delta = token.id, token.exp.replace(tzinfo=UTC) - datetime.now(UTC)
 
-    await cache.aset(
-        f"jwt:revoked:{token_id}", "1",
-        max(0, int(delta.total_seconds()))
-    )
+    seconds = int(delta.total_seconds())
+    if seconds > 0: await cache.aset(f"jwt:revoked:{token_id}", "1", seconds)
     return { "status": "ok" }

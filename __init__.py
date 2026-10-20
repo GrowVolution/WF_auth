@@ -52,7 +52,8 @@ async def before_enable(fluid: Fluid):
     await cache_revoked()
 
     from .services import outbox
-    scheduler.add_job(outbox.import_all, DateTrigger(run_date=datetime.now(UTC) + timedelta(seconds=10)))
+    scheduler.add_job(outbox.import_all, DateTrigger(run_date=datetime.now(UTC) + timedelta(seconds=10)),
+                      misfire_grace_time=None)
     scheduler.add_job(outbox.flush, IntervalTrigger(seconds=fluid.config.get("AUTH_LEDGER_FLUSH_INTERVAL", 60)))
 
     if EXT_BABEL:
