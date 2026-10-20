@@ -6,7 +6,7 @@ from webfluid.core.context import FluidContext
 from webfluid.extensions.security.models import User, Role, Permission
 from webfluid.extensions.security.models.user import user_roles
 
-from ..utils import resolver
+from ..utils import resolver, role_update
 from ...schemas.v1 import (
     AdminCreateRole, AdminUpdateRole, AdminRolePermission, AdminRoleMember
 )
@@ -36,6 +36,20 @@ async def _user_counts(role_ids: list[int], e) -> dict[int, int]:
 
 async def _user_count(role_id: int, e) -> int:
     return (await _user_counts([role_id], e)).get(role_id, 0)
+
+
+async def _member_ids(role_id: int, e) -> list[int]:
+    result = await e.exec(
+        select(user_roles.c.user_id).where(user_roles.c.role_id == role_id)
+    )
+    return list(result.all())
+
+
+def _effect(role: Role) -> tuple:
+    return (
+        role.name, role.is_admin, role.requires_2fa,
+        frozenset(permission.id for permission in role.permissions)
+    )
 
 
 def _resolve_requires_2fa(is_admin: bool, requires_2fa: bool) -> bool:
@@ -104,6 +118,7 @@ async def update_request(
 ):
     async with db.ensured_async_executor(model=Role) as e:
         role = await _get_role(role_id, e)
+        before = _effect(role)
 
         if update.name is not None and update.name != role.name:
             result = await e.exec(select(Role).where(Role.name == update.name).limit(1))
@@ -125,14 +140,20 @@ async def update_request(
             role.permissions = resolved
 
         await e.flush()
-        return _serialize(role, await _user_count(role.id, e))
+        members = await _member_ids(role.id, e) if _effect(role) != before else []
+        response = _serialize(role, await _user_count(role.id, e))
+
+    role_update(members)
+    return response
 
 
 async def delete_request(role_id: int, _ = resolver("roles:write")):
     async with db.ensured_async_executor(model=Role) as e:
         role = await _get_role(role_id, e)
+        members = await _member_ids(role.id, e)
         await e.delete(role)
 
+    role_update(members)
     return {"status": "ok"}
 
 
@@ -147,7 +168,9 @@ async def add_permission_request(
             raise HTTPException(status_code=409, detail="PERMISSION_ALREADY_ON_ROLE")
 
         role.permissions.append(permission)
+        members = await _member_ids(role.id, e)
 
+    role_update(members)
     return {"status": "ok"}
 
 
@@ -157,12 +180,15 @@ async def remove_permission_request(
     async with db.ensured_async_executor(model=Role) as e:
         role = await _get_role(role_id, e)
 
-        for permission in role.permissions:
-            if permission.id == permission_id:
-                role.permissions.remove(permission)
-                return {"status": "ok"}
+        permission = next((p for p in role.permissions if p.id == permission_id), None)
+        if not permission:
+            raise HTTPException(status_code=404, detail="PERMISSION_NOT_ON_ROLE")
 
-    raise HTTPException(status_code=404, detail="PERMISSION_NOT_ON_ROLE")
+        role.permissions.remove(permission)
+        members = await _member_ids(role.id, e)
+
+    role_update(members)
+    return {"status": "ok"}
 
 
 async def add_member_request(
@@ -183,6 +209,7 @@ async def add_member_request(
 
         user.roles.append(role)
 
+    role_update([body.user_id])
     return {"status": "ok"}
 
 
@@ -212,4 +239,5 @@ async def remove_member_request(
 
         user.roles.remove(role)
 
+    role_update([user_id])
     return {"status": "ok"}

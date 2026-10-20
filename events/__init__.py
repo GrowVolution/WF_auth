@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 def setup(a: "Additive"):
     events.create_signal(a.unique_name("user:confirmed"))
+    events.create_signal("user:role-update")
 
     from .autodelete import handle_event as autodelete_event
     events.event(a.unique_name("delete:unconfirmed"))(autodelete_event)

@@ -9,7 +9,7 @@ from typing import Optional
 from .create import _create_user, _trigger
 from .user import purge
 from .verification import confirmation_link, send_confirmation
-from ..utils import resolver
+from ..utils import resolver, role_update
 from ...schemas.v1 import CreateUser, AdminUpdateUser
 
 
@@ -148,7 +148,9 @@ async def update_request(
         if update.new_password is not None:
             user.psw_hash = await s.hash_service.ahash(update.new_password)
 
+        roles_changed = False
         if update.roles is not None:
+            before = {role.id for role in user.roles}
             if admin and user.id == admin.id and await s.user_service.is_admin(user):
                 resolved = await _resolve_roles(update.roles, e)
                 if not any(role.is_admin for role in resolved):
@@ -156,7 +158,9 @@ async def update_request(
                 user.roles = resolved
             else:
                 user.roles = await _resolve_roles(update.roles, e)
+            roles_changed = {role.id for role in user.roles} != before
 
+    if roles_changed: role_update([user_id])
     return {"status": "ok"}
 
 

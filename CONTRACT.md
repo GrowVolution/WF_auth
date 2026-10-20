@@ -82,14 +82,14 @@ Every route that would establish a session from credentials first asks the
 fan-out query `auth_login:admit` (see *Consumes*) with
 `{ "method": <method>, "provider": <name, provider methods only> }`:
 
-| Method     | Route                                                                     |
-|------------|---------------------------------------------------------------------------|
-| `password` | `POST /api/v1/users/login`                                                |
-| `register` | `POST /api/v1/users/create`                                               |
-| `setup`    | `POST /api/v1/dev/setup`                                                  |
+| Method     | Route                                                                            |
+|------------|----------------------------------------------------------------------------------|
+| `password` | `POST /api/v1/users/login`                                                       |
+| `register` | `POST /api/v1/users/create`                                                      |
+| `setup`    | `POST /api/v1/dev/setup`                                                         |
 | `provider` | `GET /api/v1/{provider}/login` and its callback, unless they carry an app ticket |
-| `app-sso`  | `POST /api/v1/{provider}/app` and `POST /api/v1/{provider}/app/exchange`  |
-| `device`   | `POST /api/v1/mobile/login`                                               |
+| `app-sso`  | `POST /api/v1/{provider}/app` and `POST /api/v1/{provider}/app/exchange`         |
+| `device`   | `POST /api/v1/mobile/login`                                                      |
 
 A handler answers `null` (or `true`) to admit, or a refusal code
 (`^[A-Z][A-Z0-9_]{2,63}$`), which `auth` answers as `403 <code>`; any other
@@ -103,12 +103,12 @@ Every route that changes a credential of the signed-in account first asks the
 fan-out query `auth_credentials:admit` (see *Consumes*) with
 `{ "credential": <credential>, "user_id": <int> }`:
 
-| Credential     | Route                                                                                    |
-|----------------|------------------------------------------------------------------------------------------|
-| `password`     | `PATCH /api/v1/users/me` with `new_password`                                             |
+| Credential     | Route                                                                                                                                    |
+|----------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `password`     | `PATCH /api/v1/users/me` with `new_password`                                                                                             |
 | `totp`         | `POST /api/v1/users/2fa/totp`, `DELETE /api/v1/users/2fa/totp`, and `POST /api/v1/users/2fa/totp/verify` while the secret is unconfirmed |
-| `webauthn`     | `POST /api/v1/users/2fa/webauthn/register`, `POST …/webauthn/register/verify`, `DELETE /api/v1/users/2fa/webauthn` |
-| `backup_codes` | `POST /api/v1/users/2fa/backup`, `DELETE /api/v1/users/2fa/backup`                       |
+| `webauthn`     | `POST /api/v1/users/2fa/webauthn/register`, `POST …/webauthn/register/verify`, `DELETE /api/v1/users/2fa/webauthn`                       |
+| `backup_codes` | `POST /api/v1/users/2fa/backup`, `DELETE /api/v1/users/2fa/backup`                                                                       |
 
 Checking a second factor (a confirmed TOTP, a WebAuthn assertion, a backup code)
 changes nothing and is not gated. The gate runs before the current password or
@@ -441,15 +441,15 @@ its stored verification flags.
 
 ### Key-log statements
 
-| Type             | Keys            | Authority                    | Effect                                     |
-|------------------|-----------------|------------------------------|--------------------------------------------|
-| `device.bind`    | `sig`, `enc`    | `self` (first), `device`, `recovery`, `host` | binds the device; a new device under `recovery` or `host` drops browsers and links |
-| `device.revoke`  | `sig` or none   | `device`, `recovery`, `host` | removes the device and every link          |
-| `recovery.set`   | `recovery`      | `self` (first), `device`, `recovery` | anchors the recovery authority     |
-| `browser.bind`   | `enc`           | `self` (first), `recovery`   | binds a browser vault (accounts without a device) |
-| `browser.revoke` | `enc`           | `device`, `recovery`         | removes a browser vault                    |
-| `browser.link`   | `enc`           | `device`, `recovery`         | links a browser to the account's device    |
-| `browser.unlink` | `enc`           | `device`, `recovery`, `host` | releases a linked browser                  |
+| Type             | Keys          | Authority                                    | Effect                                                                             |
+|------------------|---------------|----------------------------------------------|------------------------------------------------------------------------------------|
+| `device.bind`    | `sig`, `enc`  | `self` (first), `device`, `recovery`, `host` | binds the device; a new device under `recovery` or `host` drops browsers and links |
+| `device.revoke`  | `sig` or none | `device`, `recovery`, `host`                 | removes the device and every link                                                  |
+| `recovery.set`   | `recovery`    | `self` (first), `device`, `recovery`         | anchors the recovery authority                                                     |
+| `browser.bind`   | `enc`         | `self` (first), `recovery`                   | binds a browser vault (accounts without a device)                                  |
+| `browser.revoke` | `enc`         | `device`, `recovery`                         | removes a browser vault                                                            |
+| `browser.link`   | `enc`         | `device`, `recovery`                         | links a browser to the account's device                                            |
+| `browser.unlink` | `enc`         | `device`, `recovery`, `host`                 | releases a linked browser                                                          |
 
 A host statement is recorded with a flag: `HOST_ASSERTED_BINDING` (normal) on an
 unanchored account, `HOST_ASSERTED_KEY_CHANGE` (critical) or, with `reset: true`,
@@ -588,6 +588,22 @@ handler is registered the trigger is skipped with a warning.
 Public signal, declared with `create_signal`. Emitted when a user verifies their
 email. Payload: `user_id` (int). Available to other additives and to browser
 clients that want to react to a completed confirmation.
+
+### user:role-update
+
+Public signal, declared with `create_signal` under the shared ecosystem name (not
+namespaced). Payload: `user_id` (int). Emitted after the change is committed,
+once per affected user, whenever an *Administration* route changes what a user is
+granted:
+
+- `PATCH /admin/users/{user_id}` when the set of roles actually changes;
+- `POST /admin/roles/{role_id}/users` and `DELETE …/users/{user_id}` — the member;
+- `PATCH /admin/roles/{role_id}` when its name, `is_admin`, `requires_2fa` or
+  permission set actually changes, `POST`/`DELETE …/permissions`, and
+  `DELETE /admin/roles/{role_id}` — every member of the role;
+- `DELETE /admin/permissions/{permission_id}` — every member of a role that held it.
+
+Subscribers re-evaluate cached access decisions for that user.
 
 ### auth_send:confirm
 

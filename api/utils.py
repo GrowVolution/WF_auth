@@ -47,6 +47,11 @@ def resolver(grant: str) -> Any["DependsParam"]:
     )
 
 
+def role_update(user_ids):
+    for user_id in dict.fromkeys(user_ids):
+        events.trigger("user:role-update", user_id)
+
+
 async def attached_user(user: User, e, *options) -> User:
     stmt = select(User).where(User.id == user.id)
     if options: stmt = stmt.options(*options)

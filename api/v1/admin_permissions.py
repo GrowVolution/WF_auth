@@ -2,9 +2,9 @@ from fastapi import HTTPException
 from sqlalchemy import select, func
 from webfluid.core.ext import db
 from webfluid.extensions.security.models import Permission
-from webfluid.extensions.security.models.user import role_permissions
+from webfluid.extensions.security.models.user import role_permissions, user_roles
 
-from ..utils import resolver
+from ..utils import resolver, role_update
 from ...schemas.v1 import AdminCreatePermission
 
 
@@ -58,6 +58,13 @@ async def delete_request(permission_id: int, _ = resolver("permissions:write")):
         if not permission:
             raise HTTPException(status_code=404, detail="UNKNOWN_PERMISSION")
 
+        members = await e.exec(
+            select(user_roles.c.user_id).join(
+                role_permissions, role_permissions.c.role_id == user_roles.c.role_id
+            ).where(role_permissions.c.permission_id == permission_id).distinct()
+        )
+        members = list(members.all())
         await e.delete(permission)
 
+    role_update(members)
     return {"status": "ok"}
