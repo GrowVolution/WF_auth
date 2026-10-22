@@ -35,7 +35,7 @@ def _payload(payload: dict) -> dict:
 def _days(expires) -> int:
     config = FluidContext.current().fluid.config
     if expires is None: return int(config["JWT_EXPIRY_DAYS"])
-    if isinstance(expires, bool) or not 0 < expires <= int(config.get("AUTH_JWT_MAX_DAYS", 365)):
+    if isinstance(expires, bool) or not 0 < expires <= int(config["AUTH_JWT_MAX_DAYS"]):
         raise HTTPException(status_code=400, detail="INVALID_EXPIRY")
     return expires
 

@@ -8,6 +8,8 @@ v1 = APIRouter(prefix="/v1")
 
 
 def setup(a: "Additive", f: "Fluid"):
+    from ..utils import MOBILE_CLIENT
+
     from .create import (
         setup_request as initial_setup,
         setup_available,
@@ -189,9 +191,9 @@ def setup(a: "Additive", f: "Fluid"):
     v1.post("/users/2fa/mobile/complete")(f.limit("20/minute")(complete_mobile))
     v1.post("/users/2fa/mobile/fallback")(f.limit("10/minute")(fallback_mobile))
     v1.post("/users/2fa/mobile/cancel")(cancel_mobile)
-    v1.get("/users/2fa/mobile/pending")(pending_mobile)
-    v1.post("/users/2fa/mobile/approve")(f.limit("30/minute")(approve_mobile))
-    v1.post("/users/2fa/mobile/deny")(f.limit("30/minute")(deny_mobile))
+    v1.get("/users/2fa/mobile/pending", dependencies=MOBILE_CLIENT)(pending_mobile)
+    v1.post("/users/2fa/mobile/approve", dependencies=MOBILE_CLIENT)(f.limit("30/minute")(approve_mobile))
+    v1.post("/users/2fa/mobile/deny", dependencies=MOBILE_CLIENT)(f.limit("30/minute")(deny_mobile))
 
     from .mobile import (
         challenge_request as mobile_challenge,
@@ -202,12 +204,12 @@ def setup(a: "Additive", f: "Fluid"):
         keylog_request as mobile_keylog,
         actions_request as mobile_actions
     )
-    v1.post("/mobile/challenge")(f.limit("30/minute")(mobile_challenge))
-    v1.get("/mobile")(mobile_status)
-    v1.get("/mobile/keylog")(mobile_keylog)
-    v1.get("/mobile/actions")(mobile_actions)
-    v1.post("/mobile")(f.limit("10/hour")(register_mobile))
-    v1.put("/mobile")(f.limit("5/hour")(replace_mobile))
-    v1.post("/mobile/login")(f.limit("20/minute")(mobile_login))
+    v1.post("/mobile/challenge", dependencies=MOBILE_CLIENT)(f.limit("30/minute")(mobile_challenge))
+    v1.get("/mobile", dependencies=MOBILE_CLIENT)(mobile_status)
+    v1.get("/mobile/keylog", dependencies=MOBILE_CLIENT)(mobile_keylog)
+    v1.get("/mobile/actions", dependencies=MOBILE_CLIENT)(mobile_actions)
+    v1.post("/mobile", dependencies=MOBILE_CLIENT)(f.limit("10/hour")(register_mobile))
+    v1.put("/mobile", dependencies=MOBILE_CLIENT)(f.limit("5/hour")(replace_mobile))
+    v1.post("/mobile/login", dependencies=MOBILE_CLIENT)(f.limit("20/minute")(mobile_login))
 
     a.api.include_router(v1)

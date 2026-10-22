@@ -14,6 +14,9 @@ def setup(a: "Additive"):
     from .signature import handle_query as verify_signature
     events.query(a.unique_name("verify-signature"))(verify_signature)
 
+    from .client import handle_query as verify_client
+    events.query(a.unique_name("mobile:verify-client"))(verify_client)
+
     from .approval import state_query, resolve_query, fingerprint_query
     events.query(a.unique_name("mobile:approval-state"))(state_query)
     events.query(a.unique_name("mobile:resolve"))(resolve_query)

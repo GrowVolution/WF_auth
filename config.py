@@ -1,4 +1,7 @@
 from webfluid.core.config import register_config
+from webfluid.core.constants import EXECUTION
+from webfluid.exceptions import AdditiveException
+import os, secrets
 
 try: from ._my_config import MyConfig
 except ImportError:
@@ -27,4 +30,16 @@ class DefaultConfig:
 
 
 @register_config()
-class Config(MyConfig, DefaultConfig): pass
+class Config(MyConfig, DefaultConfig):
+    AUTH_MOBILE_SECRET = os.getenv("MOBILE_SECRET")
+
+    if EXECUTION:
+        if not AUTH_MOBILE_SECRET:
+            raise AdditiveException("Missing MOBILE_SECRET")
+
+
+setup = {
+    "MOBILE_SECRET": {
+        "type": "auto", "value": secrets.token_hex(32)
+    }
+}

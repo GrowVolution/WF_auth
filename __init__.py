@@ -27,6 +27,9 @@ async def before_enable(fluid: Fluid):
         priority=5
     )
 
+    from .services import client
+    client.configure(fluid.config.get("AUTH_MOBILE_SECRET"))
+
     from .services.keylog import configure as configure_keylog
     configure_keylog(fluid.config["BASE_URL"])
 
@@ -47,15 +50,17 @@ async def before_enable(fluid: Fluid):
         KeyStatement.set_bind(bind)
         ActionLog.set_bind(bind)
 
-    from .jobs import get_watcher, cache_revoked
+    from .jobs import get_watcher
     scheduler.add_job(get_watcher(fluid), CronTrigger(hour=0))
-    await cache_revoked()
 
     from .services import outbox
     scheduler.add_job(outbox.import_all, DateTrigger(run_date=datetime.now(UTC) + timedelta(seconds=10)),
                       misfire_grace_time=None)
-    scheduler.add_job(outbox.flush, IntervalTrigger(seconds=fluid.config.get("AUTH_LEDGER_FLUSH_INTERVAL", 60)))
+    scheduler.add_job(outbox.flush, IntervalTrigger(seconds=fluid.config["AUTH_LEDGER_FLUSH_INTERVAL"]))
 
     if EXT_BABEL:
         from .i18n import translations
         babel.update_translations("messages", translations)
+
+    from .jobs import cache_revoked
+    await cache_revoked()

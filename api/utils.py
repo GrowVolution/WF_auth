@@ -1,4 +1,4 @@
-from fastapi import Request, HTTPException
+from fastapi import Depends, Request, HTTPException
 from sqlalchemy import select
 from webfluid.core.ext import events, security as s
 from webfluid.extensions.security.models import User
@@ -10,6 +10,15 @@ if TYPE_CHECKING:
     from fastapi.params import Depends as DependsParam
 
 _REFUSAL = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+
+
+def _mobile_client(request: Request):
+    from ..services import client
+    code = client.refusal(request)
+    if code: raise HTTPException(status_code=401, detail=code)
+
+
+MOBILE_CLIENT = [Depends(_mobile_client)]
 
 
 async def _gate(query: str, payload: dict, refused: str, failed: str):

@@ -70,6 +70,7 @@ class UserResponse(UserSchema):
     email_verified: bool
     is_admin: bool
     has_2fa: bool
+    has_mobile: bool = False
 
 
 class AdminUpdateUser(BaseModel):

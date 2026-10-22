@@ -1,5 +1,6 @@
 from webfluid.core.ext import db, events, cache
 from sqlalchemy import select, delete
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime, UTC, timedelta
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 
 def get_watcher(fluid: "Fluid"):
     from . import additive
-    deadline_days = fluid.config.get("AUTH_TOKEN_EXPIRY_EVENT_DEADLINE", 5)
+    deadline_days = fluid.config["AUTH_TOKEN_EXPIRY_EVENT_DEADLINE"]
 
     async def watcher():
         now = datetime.now(UTC)
@@ -40,9 +41,16 @@ def get_watcher(fluid: "Fluid"):
 
 async def cache_revoked():
     now = datetime.now(UTC)
-    async with db.async_executor(model=Token) as e:
-        result = await e.exec(select(Token).where(Token.revoked == True))
+    try:
+        async with db.async_executor(model=Token) as e:
+            result = await e.exec(select(Token).where(Token.revoked == True))
+            revoked = result.all()
+    except SQLAlchemyError as exc:
+        raise RuntimeError(
+            "Cannot load token revocations. Run migrations and restore database "
+            "access before enabling auth."
+        ) from exc
 
-        for token in result.all():
-            seconds = int((token.exp.replace(tzinfo=UTC) - now).total_seconds())
-            if seconds > 0: await cache.aset(f"jwt:revoked:{token.id}", "1", seconds)
+    for token in revoked:
+        seconds = int((token.exp.replace(tzinfo=UTC) - now).total_seconds())
+        if seconds > 0: await cache.aset(f"jwt:revoked:{token.id}", "1", seconds)

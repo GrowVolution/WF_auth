@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ..utils import attached_user, admit_credential
+from ...services import mobile as devices
 from ...schemas.v1 import UpdateUser
 
 
@@ -42,7 +43,8 @@ async def get_request(user: User = s.user_service.require_2fa):
             "email_verified": user.email_verified,
             "roles": roles,
             "is_admin": is_admin,
-            "has_2fa": s.user_service.has_2fa(user)
+            "has_2fa": s.user_service.has_2fa(user),
+            "has_mobile": await devices.device(user.id) is not None
         }
 
 

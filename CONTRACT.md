@@ -1,5 +1,87 @@
 # Authentication API — Contract
 
+<!-- index -->
+Read this file in parts. Each range is `first-last` as the file stands now — open one with the Read
+tool's `offset`/`limit`, or `sed -n 'first,lastp'`.
+
+- `100-114` **At a glance**
+- `115-704` **API**
+  - `122-127` Health
+    - `124-127` GET /api/health
+  - `128-141` Bootstrap
+    - `133-136` GET /api/v1/dev/setup
+    - `137-141` POST /api/v1/dev/setup
+  - `142-352` Accounts & Sessions
+    - `144-149` POST /api/v1/users/create
+    - `150-153` POST /api/v1/users/login/available
+    - `154-169` POST /api/v1/users/login
+    - `170-173` GET /api/v1/users/logout
+    - `174-194` Login gate
+    - `195-215` Credential gate
+    - `216-247` Mobile clients
+    - `248-256` Session flags
+    - `257-266` GET /api/v1/users/me/available
+    - `267-300` GET /api/v1/users/me · PATCH /api/v1/users/me · DELETE /api/v1/users/me
+    - `301-335` Verification
+    - `336-344` Email confirmation
+    - `345-352` Password reset
+  - `353-391` OAuth / SSO
+    - `365-391` Sign-in from a native app
+  - `392-413` Personal JWT Tokens
+  - `414-541` Two-Factor Authentication
+    - `425-428` GET /api/v1/users/2fa
+    - `429-441` TOTP
+    - `442-449` WebAuthn / Passkeys
+    - `450-459` Backup codes
+    - `460-525` Mobile approval
+    - `526-541` Delegated approvals
+  - `542-660` Mobile devices
+    - `554-559` POST /api/v1/mobile/challenge
+    - `560-567` GET /api/v1/mobile
+    - `568-575` GET /api/v1/mobile/keylog
+    - `576-594` Key-log statements
+    - `595-599` GET /api/v1/mobile/actions
+    - `600-626` POST /api/v1/mobile
+    - `627-641` PUT /api/v1/mobile
+    - `642-660` POST /api/v1/mobile/login
+  - `661-704` Administration
+    - `666-675` Users — grant `users:read` / `users:write`
+    - `676-693` Roles — grant `roles:read` / `roles:write`
+    - `694-704` Permissions — grant `permissions:read` / `permissions:write`
+- `705-1011` **Events / Queries**
+  - `711-824` Triggers
+    - `713-719` auth_user:created
+    - `720-725` auth_user:confirmed
+    - `726-741` user:role-update
+    - `742-751` auth_send:confirm
+    - `752-756` auth_send:reset
+    - `757-793` auth_oauth:first-callback
+    - `794-800` auth_token:expires
+    - `801-815` auth_mobile:approval
+    - `816-824` auth_mobile:replaced
+  - `825-928` Provides
+    - `832-845` auth_user-encrypt *(query)*
+    - `846-857` auth_verify-signature *(query)*
+    - `858-862` auth_keylog:state *(query)*
+    - `863-870` auth_keylog:append *(query)*
+    - `871-879` auth_keylog:unlink *(query)*
+    - `880-887` auth_action:accept *(query)*
+    - `888-892` auth_action:result *(query)*
+    - `893-897` auth_ledger:flush *(query)*
+    - `898-907` auth_mobile:verify-client *(query)*
+    - `908-914` auth_mobile:fingerprint *(query)*
+    - `915-920` auth_mobile:approval-state *(query)*
+    - `921-928` auth_mobile:resolve *(query)*
+  - `929-1011` Consumes
+    - `931-961` auth_user:delete *(query, fan-out)*
+    - `962-970` auth_delete:unconfirmed *(signal)*
+    - `971-979` peering_integrity *(provider, only with `peering`)*
+    - `980-987` auth_login:admit *(query, fan-out)*
+    - `988-995` auth_credentials:admit *(query, fan-out)*
+    - `996-1005` auth_mobile:delegate *(query)*
+    - `1006-1011` auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
+<!-- /index -->
+
 The public integration surface of the `auth` additive: the REST API it exposes
 and the event-bus contracts it emits and consumes.
 
@@ -14,6 +96,19 @@ Terminology used throughout this document:
 - **public** — declared with `internal=False`; also reachable by browser clients
   over the events websocket. **internal** contracts are server-side only but may
   still be consumed across additives.
+
+## At a glance
+
+|                  |                                                                                                                                                                                                                       |
+|------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Mount            | REST under `/auth/api`, versioned `/v1`; no pages, no frontend                                                                                                                                                        |
+| Requires         | WebFluid `>=1.0.0rc1`; extensions `scheduling`, `sqlalchemy`, `security`, `events`, `cache`, `jwt`                                                                                                                    |
+| Gates            | session (`require_user` → verified email → `require_2fa`), admin `is_admin` + grant, **mobile client** (`X-Client-Ident` + platform user agent)                                                                       |
+| Secret           | `MOBILE_SECRET` → `AUTH_MOBILE_SECRET` (`[auth]` in the app config, generated)                                                                                                                                        |
+| Config           | `AUTH_2FA_*` (issuer, backup codes, WebAuthn RP), `AUTH_ADMIN_ROLE_REQUIRES_2FA`, `AUTH_SSO_APP_REDIRECTS`, `AUTH_SSO_APP_TTL`, `AUTH_JWT_MAX_DAYS`, `AUTH_TOKEN_EXPIRY_EVENT_DEADLINE`, `AUTH_LEDGER_FLUSH_INTERVAL` |
+| Emits            | `auth_user:created`, `auth_user:confirmed`, `user:role-update`, `auth_send:confirm`, `auth_send:reset`, `auth_oauth:first-callback`, `auth_token:expires`, `auth_mobile:approval`, `auth_mobile:replaced`             |
+| Provides         | `auth_mobile:verify-client`, `auth_user-encrypt`, `auth_verify-signature`, `auth_keylog:*`, `auth_action:*`, `auth_ledger:flush`, `auth_mobile:fingerprint`, `auth_mobile:approval-state`, `auth_mobile:resolve`      |
+| Extension points | `auth_user:delete` (fan-out), `auth_login:admit` (fan-out), `auth_credentials:admit` (fan-out), `auth_mobile:delegate`, `auth_page:*`, `auth_delete:unconfirmed`                                                      |
 
 ---
 
@@ -118,6 +213,38 @@ gate: `null` (or `true`) admits, a refusal code is answered as `403 <code>`, any
 other answer as `403 CREDENTIAL_NOT_ADMITTED`, and a handler that raises refuses
 the change with `503 CREDENTIAL_GATE_FAILED`. Without a handler nothing changes.
 
+### Mobile clients
+
+Routes that only an app on the account's phone calls are restricted to **mobile
+clients**. A mobile client sends two headers:
+
+- `X-Client-Ident` with the deployment's `AUTH_MOBILE_SECRET` (environment
+  `MOBILE_SECRET` in the `[auth]` section of the app config; `wf create app`
+  generates it). `auth` refuses to start without it under `wf run`.
+- `User-Agent` in product form with the platform first:
+  `<product>/<version> (<android|ios>[; <detail>])`, for example
+  `myapp/1.0.0 (android; com.example.app)`. Browsers, crawlers, monitors and
+  generic HTTP libraries do not identify like this.
+
+Anything else is answered `401 INVALID_CLIENT` (missing or wrong secret) or
+`401 INVALID_USER_AGENT`. The secret is compared in constant time. It ships inside
+the app binary, so it keeps foreign apps and casual scripts off a deployment; it
+is not a cryptographic guarantee — every sensitive device route additionally
+requires the device's signature.
+
+| Route                                            | Why it is mobile-only                 |
+|--------------------------------------------------|---------------------------------------|
+| `POST /api/v1/mobile/challenge`                  | starts a device registration or login |
+| `GET` / `POST` / `PUT /api/v1/mobile`            | reads or binds the device keys        |
+| `GET /api/v1/mobile/keylog`, `/mobile/actions`   | the device's own trust data           |
+| `POST /api/v1/mobile/login`                      | device sign-in                        |
+| `GET /api/v1/users/2fa/mobile/pending`           | the device asks for its open approval |
+| `POST /api/v1/users/2fa/mobile/approve`, `/deny` | the device settles an approval        |
+
+Other additives apply the same check to their own app-only routes through the
+query `auth_mobile:verify-client` (see *Provides*), so a deployment has one mobile
+secret and one definition of a mobile client.
+
 ### Session flags
 
 The session cookie carries `user_id` and `2fa_verified` (framework) and, for a
@@ -144,7 +271,14 @@ Reads, updates, or deletes the authenticated user. All three sit behind the full
 `401 EMAIL_NOT_VERIFIED` or `401 TWO_FA_REQUIRED` — see *Verification* below for
 how a client walks the caller out of those states.
 
-`GET` responds with `UserResponse`. `PATCH` accepts `UpdateUser` (`username`,
+`GET` responds with `UserResponse`: `id`, `username`, `email`,
+`pending_email`, `email_verified`, `roles` (`name`, `permissions`,
+`requires_2fa`), `is_admin`, `has_2fa` (a confirmed TOTP or a WebAuthn
+credential) and `has_mobile` (the account has a mobile device). A role's
+`requires_2fa` is satisfied by **either** — the device is a second factor — so a
+client that enforces the role should ask for TOTP or WebAuthn only when both are
+`false`, and may recommend one as a fallback when only `has_mobile` is `true`.
+`PATCH` accepts `UpdateUser` (`username`,
 `current_password`, `new_password`; rate-limited 10/minute) — **the email address
 is not part of it**; the address lifecycle belongs to `/verification/email`. A
 `new_password` passes the *Credential gate* first.
@@ -760,6 +894,16 @@ an accepted action, so peers can check that the host applied what was signed.
 
 Hands pending key statements and actions to `peering_record`; answers the number
 flushed. Runs every `AUTH_LEDGER_FLUSH_INTERVAL` seconds (60) on its own.
+
+### auth_mobile:verify-client *(query)*
+
+Checks whether the **current request** comes from a mobile client as defined under
+*Mobile clients*. The payload is ignored (send `null`); the request is taken from
+the request context, so the query only means something inside a request. Answers
+`null` for a mobile client, or the refusal code — `INVALID_CLIENT` or
+`INVALID_USER_AGENT` — otherwise; outside a request it answers `INVALID_CLIENT`.
+A consumer refuses with `401` and the code, which keeps every app-only route of
+the application answering the same way.
 
 ### auth_mobile:fingerprint *(query)*
 
