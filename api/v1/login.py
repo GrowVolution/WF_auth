@@ -12,7 +12,7 @@ from .create import _trigger
 from ..utils import admit
 from ...utils.claims import normalized_claims
 from ...schemas.v1 import LoginUser
-from ...services import approval as approvals, mobile as devices, sso_app, credentials
+from ...services import approval as approvals, mobile as devices, provider_app, credentials
 
 
 async def available_request(_ = s.user_service.require_user):
@@ -53,9 +53,9 @@ async def oauth_request(
 ):
     from ... import additive
     if app is not None:
-        if not await sso_app.ticket(provider, app):
-            raise HTTPException(status_code=400, detail="SSO_APP_EXPIRED")
-        request.session["sso_app"] = app
+        if not await provider_app.ticket(provider, app):
+            raise HTTPException(status_code=400, detail="PROVIDER_APP_EXPIRED")
+        request.session["provider_app"] = app
     else:
         await admit("provider", provider)
 
@@ -84,10 +84,10 @@ async def callback_request(
 ):
     sub = str(userinfo["sub"])
 
-    app = request.session.pop("sso_app", None)
-    if app is not None and not await sso_app.ticket(provider, app):
+    app = request.session.pop("provider_app", None)
+    if app is not None and not await provider_app.ticket(provider, app):
         request.session.clear()
-        raise HTTPException(status_code=400, detail="SSO_APP_EXPIRED")
+        raise HTTPException(status_code=400, detail="PROVIDER_APP_EXPIRED")
     if app is None:
         await admit("provider", provider)
 
@@ -143,8 +143,8 @@ async def callback_request(
 
         if app is not None:
             request.session.clear()
-            try: target = await sso_app.issue(provider, app, user.id, identity is not None)
-            except sso_app.SsoAppError as exc:
+            try: target = await provider_app.issue(provider, app, user.id, identity is not None)
+            except provider_app.ProviderAppError as exc:
                 raise HTTPException(status_code=400, detail=exc.code)
             return RedirectResponse(target, status_code=303)
 

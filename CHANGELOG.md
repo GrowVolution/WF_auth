@@ -6,6 +6,22 @@ What changed in the Authentication API, newest first.
 
 Requires WebFluid `1.0.0rc1`.
 
+### Provider sign-in instead of "SSO"
+
+Single sign-on is a feature of the account layer built on top of `auth`; `auth` itself only knows
+OAuth providers. Everything that carried the SSO name now speaks of providers:
+
+- `AUTH_SSO_APP_REDIRECTS` and `AUTH_SSO_APP_TTL` are now `AUTH_PROVIDER_APP_REDIRECTS` and
+  `AUTH_PROVIDER_APP_TTL`.
+- The errors `SSO_APP_DISABLED` and `SSO_APP_EXPIRED` are now `PROVIDER_APP_DISABLED` and
+  `PROVIDER_APP_EXPIRED`.
+- The login gate reports native-app sign-ins as `app-provider` instead of `app-sso`.
+- The admin user list carries `providers` (the names of the linked providers) instead of the
+  boolean `sso`.
+
+**Upgrade:** rename the two settings in your configuration, check gate handlers that compare the
+method with `app-sso`, and read `providers` instead of `sso` in admin clients.
+
 ### Routes only your phone app can call
 
 `auth` now tells a request from your mobile app apart from everything else, and the routes that only
@@ -66,19 +82,19 @@ An Additive that runs its own second factor on the device takes the approval ove
 by a phone, so clients no longer have to force TOTP or a security key on an account that already
 has its phone as second factor — they recommend one as a fallback instead.
 
-### Single sign-on from native apps
+### Provider sign-in from native apps
 
 A native app signs in with a provider in the system browser instead of an embedded web view
 (RFC 8252): `POST /api/v1/{provider}/app` starts the flow with a PKCE challenge and a redirect from
-`AUTH_SSO_APP_REDIRECTS`, the callback hands the app a single-use code instead of signing the
+`AUTH_PROVIDER_APP_REDIRECTS`, the callback hands the app a single-use code instead of signing the
 browser in, and `POST /api/v1/{provider}/app/exchange` turns code and verifier into the app's
-session. The flow is off while `AUTH_SSO_APP_REDIRECTS` is empty.
+session. The flow is off while `AUTH_PROVIDER_APP_REDIRECTS` is empty.
 
 ### Gates for other Additives
 
 - **Login gate:** every route that would establish a session from credentials first asks the
   fan-out query `auth_login:admit` with the method (`password`, `register`, `setup`, `provider`,
-  `app-sso`, `device`). A refusal code is answered as `403 <code>`.
+  `app-provider`, `device`). A refusal code is answered as `403 <code>`.
 - **Credential gate:** every route that changes the password or a second factor first asks
   `auth_credentials:admit`.
 - Without a handler nothing changes.

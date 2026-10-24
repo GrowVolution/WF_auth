@@ -44,7 +44,7 @@ built with.
 | `AUTH_2FA_WEBAUTHN_RP_ID`      | `"localhost"`             | WebAuthn relying party — your domain in production  |
 | `AUTH_2FA_WEBAUTHN_ORIGIN`     | `"http://localhost:8000"` | Origin passkeys are bound to                        |
 | `AUTH_ADMIN_ROLE_REQUIRES_2FA` | `True`                    | Admin roles always ask for a second factor          |
-| `AUTH_SSO_APP_REDIRECTS`       | `[]`                      | Redirects native apps may use for SSO (empty = off) |
+| `AUTH_PROVIDER_APP_REDIRECTS`  | `[]`                      | Redirects native apps may use for provider sign-in (empty = off) |
 | `AUTH_JWT_MAX_DAYS`            | `365`                     | Longest lifetime a personal token may have          |
 
 All keys, routes, events and error codes are in [CONTRACT.md](CONTRACT.md).

@@ -43,7 +43,7 @@ so another Additive can prefill a profile.
 **Native apps** never show a provider inside an embedded web view. They open the sign-in in the
 system browser, receive a single-use code on a redirect they registered, and exchange it with a
 PKCE verifier only the app holds. The redirects an app may use are listed in
-`AUTH_SSO_APP_REDIRECTS`; an empty list turns the flow off.
+`AUTH_PROVIDER_APP_REDIRECTS`; an empty list turns the flow off.
 
 **The phone.** An app can bind one device to an account and sign in with it afterwards — see below.
 
@@ -166,8 +166,8 @@ mobile app with the same value.
 | `AUTH_2FA_WEBAUTHN_RP_NAME`         | `"WebFluid"`               | the name passkey prompts show                                |
 | `AUTH_2FA_WEBAUTHN_ORIGIN`          | `"http://localhost:8000"`  | the origin passkeys are bound to — **your origin in production** |
 | `AUTH_ADMIN_ROLE_REQUIRES_2FA`      | `True`                     | administrator roles always require a second factor          |
-| `AUTH_SSO_APP_REDIRECTS`            | `[]`                       | redirects native apps may use for provider sign-in; empty = off |
-| `AUTH_SSO_APP_TTL`                  | `600`                      | seconds a native-app sign-in may take                        |
+| `AUTH_PROVIDER_APP_REDIRECTS`       | `[]`                       | redirects native apps may use for provider sign-in; empty = off |
+| `AUTH_PROVIDER_APP_TTL`             | `600`                      | seconds a native-app sign-in may take                        |
 | `AUTH_JWT_MAX_DAYS`                 | `365`                      | the longest lifetime of a personal token                     |
 | `AUTH_TOKEN_EXPIRY_EVENT_DEADLINE`  | `5`                        | days before expiry at which owners are told                  |
 | `AUTH_LEDGER_FLUSH_INTERVAL`        | `60`                       | seconds between flushes of the key-log outbox to the ledger  |
@@ -189,7 +189,7 @@ for production before the first person enrols one.
 | `403 LOGIN_NOT_ADMITTED` or another code        | An Additive's login gate refused the method                                                 |
 | `503 LOGIN_GATE_FAILED`                         | A login gate handler raised — the sign-in is refused rather than waved through              |
 | Passkeys fail in production                     | `AUTH_2FA_WEBAUTHN_RP_ID` / `…_ORIGIN` still point at localhost                             |
-| Native provider sign-in is refused              | The app's redirect is not listed in `AUTH_SSO_APP_REDIRECTS`                                |
+| Native provider sign-in is refused              | The app's redirect is not listed in `AUTH_PROVIDER_APP_REDIRECTS`                                |
 | Auth cannot load token revocations    | Database access or tables are unavailable — restore access, run migrations and restart                         |
 
 ---

@@ -1,6 +1,6 @@
 ---
 name: additive-auth
-description: Use the `auth` Additive of a WebFluid project for sign-in, sessions, email verification, password reset, TOTP/WebAuthn/backup codes, OAuth and native-app SSO, personal JWTs, mobile devices and their key log, and user/role/permission administration. Load it before writing any login, session, 2FA, token or account-admin code, before gating a route on a signed-in user or a phone app, and before adding a handler for an `auth_*` query or signal.
+description: Use the `auth` Additive of a WebFluid project for sign-in, sessions, email verification, password reset, TOTP/WebAuthn/backup codes, OAuth providers and native-app provider sign-in, personal JWTs, mobile devices and their key log, and user/role/permission administration. Load it before writing any login, session, 2FA, token or account-admin code, before gating a route on a signed-in user or a phone app, and before adding a handler for an `auth_*` query or signal.
 ---
 
 # auth — agent guide
@@ -25,7 +25,7 @@ needs any of the things below, the answer is to call or extend `auth`, not to wr
 
 - Registration, login, logout, email confirmation, password reset, unconfirmed-account cleanup.
 - TOTP with QR provisioning, WebAuthn/passkeys, backup codes, attempt limits, replay protection.
-- OAuth sign-in and linking; native-app SSO through the system browser with PKCE.
+- OAuth sign-in and linking; native-app provider sign-in through the system browser with PKCE.
 - Personal JWTs with bounded lifetime and grant-only payloads, revocation, expiry watcher.
 - A mobile device per account, device login, number-matching approval, key log and signed actions.
 - Admin CRUD for users, roles, permissions, with `user:role-update` fired on every change.
@@ -97,7 +97,7 @@ async def purge(data: dict) -> dict:
 Sections of `../CONTRACT.md`, as that file stands now:
 
 - `100-114` **At a glance**
-- `115-704` **API**
+- `115-706` **API**
   - `122-127` Health
     - `124-127` GET /api/health
   - `128-141` Bootstrap
@@ -117,7 +117,7 @@ Sections of `../CONTRACT.md`, as that file stands now:
     - `301-335` Verification
     - `336-344` Email confirmation
     - `345-352` Password reset
-  - `353-391` OAuth / SSO
+  - `353-391` OAuth providers
     - `365-391` Sign-in from a native app
   - `392-413` Personal JWT Tokens
   - `414-541` Two-Factor Authentication
@@ -136,40 +136,40 @@ Sections of `../CONTRACT.md`, as that file stands now:
     - `600-626` POST /api/v1/mobile
     - `627-641` PUT /api/v1/mobile
     - `642-660` POST /api/v1/mobile/login
-  - `661-704` Administration
-    - `666-675` Users — grant `users:read` / `users:write`
-    - `676-693` Roles — grant `roles:read` / `roles:write`
-    - `694-704` Permissions — grant `permissions:read` / `permissions:write`
-- `705-1011` **Events / Queries**
-  - `711-824` Triggers
-    - `713-719` auth_user:created
-    - `720-725` auth_user:confirmed
-    - `726-741` user:role-update
-    - `742-751` auth_send:confirm
-    - `752-756` auth_send:reset
-    - `757-793` auth_oauth:first-callback
-    - `794-800` auth_token:expires
-    - `801-815` auth_mobile:approval
-    - `816-824` auth_mobile:replaced
-  - `825-928` Provides
-    - `832-845` auth_user-encrypt *(query)*
-    - `846-857` auth_verify-signature *(query)*
-    - `858-862` auth_keylog:state *(query)*
-    - `863-870` auth_keylog:append *(query)*
-    - `871-879` auth_keylog:unlink *(query)*
-    - `880-887` auth_action:accept *(query)*
-    - `888-892` auth_action:result *(query)*
-    - `893-897` auth_ledger:flush *(query)*
-    - `898-907` auth_mobile:verify-client *(query)*
-    - `908-914` auth_mobile:fingerprint *(query)*
-    - `915-920` auth_mobile:approval-state *(query)*
-    - `921-928` auth_mobile:resolve *(query)*
-  - `929-1011` Consumes
-    - `931-961` auth_user:delete *(query, fan-out)*
-    - `962-970` auth_delete:unconfirmed *(signal)*
-    - `971-979` peering_integrity *(provider, only with `peering`)*
-    - `980-987` auth_login:admit *(query, fan-out)*
-    - `988-995` auth_credentials:admit *(query, fan-out)*
-    - `996-1005` auth_mobile:delegate *(query)*
-    - `1006-1011` auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
+  - `661-706` Administration
+    - `666-677` Users — grant `users:read` / `users:write`
+    - `678-695` Roles — grant `roles:read` / `roles:write`
+    - `696-706` Permissions — grant `permissions:read` / `permissions:write`
+- `707-1013` **Events / Queries**
+  - `713-826` Triggers
+    - `715-721` auth_user:created
+    - `722-727` auth_user:confirmed
+    - `728-743` user:role-update
+    - `744-753` auth_send:confirm
+    - `754-758` auth_send:reset
+    - `759-795` auth_oauth:first-callback
+    - `796-802` auth_token:expires
+    - `803-817` auth_mobile:approval
+    - `818-826` auth_mobile:replaced
+  - `827-930` Provides
+    - `834-847` auth_user-encrypt *(query)*
+    - `848-859` auth_verify-signature *(query)*
+    - `860-864` auth_keylog:state *(query)*
+    - `865-872` auth_keylog:append *(query)*
+    - `873-881` auth_keylog:unlink *(query)*
+    - `882-889` auth_action:accept *(query)*
+    - `890-894` auth_action:result *(query)*
+    - `895-899` auth_ledger:flush *(query)*
+    - `900-909` auth_mobile:verify-client *(query)*
+    - `910-916` auth_mobile:fingerprint *(query)*
+    - `917-922` auth_mobile:approval-state *(query)*
+    - `923-930` auth_mobile:resolve *(query)*
+  - `931-1013` Consumes
+    - `933-963` auth_user:delete *(query, fan-out)*
+    - `964-972` auth_delete:unconfirmed *(signal)*
+    - `973-981` peering_integrity *(provider, only with `peering`)*
+    - `982-989` auth_login:admit *(query, fan-out)*
+    - `990-997` auth_credentials:admit *(query, fan-out)*
+    - `998-1007` auth_mobile:delegate *(query)*
+    - `1008-1013` auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
 <!-- /index -->

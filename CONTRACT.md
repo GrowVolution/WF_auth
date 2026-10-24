@@ -5,7 +5,7 @@ Read this file in parts. Each range is `first-last` as the file stands now — o
 tool's `offset`/`limit`, or `sed -n 'first,lastp'`.
 
 - `100-114` **At a glance**
-- `115-704` **API**
+- `115-706` **API**
   - `122-127` Health
     - `124-127` GET /api/health
   - `128-141` Bootstrap
@@ -25,7 +25,7 @@ tool's `offset`/`limit`, or `sed -n 'first,lastp'`.
     - `301-335` Verification
     - `336-344` Email confirmation
     - `345-352` Password reset
-  - `353-391` OAuth / SSO
+  - `353-391` OAuth providers
     - `365-391` Sign-in from a native app
   - `392-413` Personal JWT Tokens
   - `414-541` Two-Factor Authentication
@@ -44,42 +44,42 @@ tool's `offset`/`limit`, or `sed -n 'first,lastp'`.
     - `600-626` POST /api/v1/mobile
     - `627-641` PUT /api/v1/mobile
     - `642-660` POST /api/v1/mobile/login
-  - `661-704` Administration
-    - `666-675` Users — grant `users:read` / `users:write`
-    - `676-693` Roles — grant `roles:read` / `roles:write`
-    - `694-704` Permissions — grant `permissions:read` / `permissions:write`
-- `705-1011` **Events / Queries**
-  - `711-824` Triggers
-    - `713-719` auth_user:created
-    - `720-725` auth_user:confirmed
-    - `726-741` user:role-update
-    - `742-751` auth_send:confirm
-    - `752-756` auth_send:reset
-    - `757-793` auth_oauth:first-callback
-    - `794-800` auth_token:expires
-    - `801-815` auth_mobile:approval
-    - `816-824` auth_mobile:replaced
-  - `825-928` Provides
-    - `832-845` auth_user-encrypt *(query)*
-    - `846-857` auth_verify-signature *(query)*
-    - `858-862` auth_keylog:state *(query)*
-    - `863-870` auth_keylog:append *(query)*
-    - `871-879` auth_keylog:unlink *(query)*
-    - `880-887` auth_action:accept *(query)*
-    - `888-892` auth_action:result *(query)*
-    - `893-897` auth_ledger:flush *(query)*
-    - `898-907` auth_mobile:verify-client *(query)*
-    - `908-914` auth_mobile:fingerprint *(query)*
-    - `915-920` auth_mobile:approval-state *(query)*
-    - `921-928` auth_mobile:resolve *(query)*
-  - `929-1011` Consumes
-    - `931-961` auth_user:delete *(query, fan-out)*
-    - `962-970` auth_delete:unconfirmed *(signal)*
-    - `971-979` peering_integrity *(provider, only with `peering`)*
-    - `980-987` auth_login:admit *(query, fan-out)*
-    - `988-995` auth_credentials:admit *(query, fan-out)*
-    - `996-1005` auth_mobile:delegate *(query)*
-    - `1006-1011` auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
+  - `661-706` Administration
+    - `666-677` Users — grant `users:read` / `users:write`
+    - `678-695` Roles — grant `roles:read` / `roles:write`
+    - `696-706` Permissions — grant `permissions:read` / `permissions:write`
+- `707-1013` **Events / Queries**
+  - `713-826` Triggers
+    - `715-721` auth_user:created
+    - `722-727` auth_user:confirmed
+    - `728-743` user:role-update
+    - `744-753` auth_send:confirm
+    - `754-758` auth_send:reset
+    - `759-795` auth_oauth:first-callback
+    - `796-802` auth_token:expires
+    - `803-817` auth_mobile:approval
+    - `818-826` auth_mobile:replaced
+  - `827-930` Provides
+    - `834-847` auth_user-encrypt *(query)*
+    - `848-859` auth_verify-signature *(query)*
+    - `860-864` auth_keylog:state *(query)*
+    - `865-872` auth_keylog:append *(query)*
+    - `873-881` auth_keylog:unlink *(query)*
+    - `882-889` auth_action:accept *(query)*
+    - `890-894` auth_action:result *(query)*
+    - `895-899` auth_ledger:flush *(query)*
+    - `900-909` auth_mobile:verify-client *(query)*
+    - `910-916` auth_mobile:fingerprint *(query)*
+    - `917-922` auth_mobile:approval-state *(query)*
+    - `923-930` auth_mobile:resolve *(query)*
+  - `931-1013` Consumes
+    - `933-963` auth_user:delete *(query, fan-out)*
+    - `964-972` auth_delete:unconfirmed *(signal)*
+    - `973-981` peering_integrity *(provider, only with `peering`)*
+    - `982-989` auth_login:admit *(query, fan-out)*
+    - `990-997` auth_credentials:admit *(query, fan-out)*
+    - `998-1007` auth_mobile:delegate *(query)*
+    - `1008-1013` auth_page:confirmation · auth_page:reset · auth_page:invalid *(queries)*
 <!-- /index -->
 
 The public integration surface of the `auth` additive: the REST API it exposes
@@ -105,7 +105,7 @@ Terminology used throughout this document:
 | Requires         | WebFluid `>=1.0.0rc1`; extensions `scheduling`, `sqlalchemy`, `security`, `events`, `cache`, `jwt`                                                                                                                    |
 | Gates            | session (`require_user` → verified email → `require_2fa`), admin `is_admin` + grant, **mobile client** (`X-Client-Ident` + platform user agent)                                                                       |
 | Secret           | `MOBILE_SECRET` → `AUTH_MOBILE_SECRET` (`[auth]` in the app config, generated)                                                                                                                                        |
-| Config           | `AUTH_2FA_*` (issuer, backup codes, WebAuthn RP), `AUTH_ADMIN_ROLE_REQUIRES_2FA`, `AUTH_SSO_APP_REDIRECTS`, `AUTH_SSO_APP_TTL`, `AUTH_JWT_MAX_DAYS`, `AUTH_TOKEN_EXPIRY_EVENT_DEADLINE`, `AUTH_LEDGER_FLUSH_INTERVAL` |
+| Config           | `AUTH_2FA_*` (issuer, backup codes, WebAuthn RP), `AUTH_ADMIN_ROLE_REQUIRES_2FA`, `AUTH_PROVIDER_APP_REDIRECTS`, `AUTH_PROVIDER_APP_TTL`, `AUTH_JWT_MAX_DAYS`, `AUTH_TOKEN_EXPIRY_EVENT_DEADLINE`, `AUTH_LEDGER_FLUSH_INTERVAL` |
 | Emits            | `auth_user:created`, `auth_user:confirmed`, `user:role-update`, `auth_send:confirm`, `auth_send:reset`, `auth_oauth:first-callback`, `auth_token:expires`, `auth_mobile:approval`, `auth_mobile:replaced`             |
 | Provides         | `auth_mobile:verify-client`, `auth_user-encrypt`, `auth_verify-signature`, `auth_keylog:*`, `auth_action:*`, `auth_ledger:flush`, `auth_mobile:fingerprint`, `auth_mobile:approval-state`, `auth_mobile:resolve`      |
 | Extension points | `auth_user:delete` (fan-out), `auth_login:admit` (fan-out), `auth_credentials:admit` (fan-out), `auth_mobile:delegate`, `auth_page:*`, `auth_delete:unconfirmed`                                                      |
@@ -183,7 +183,7 @@ fan-out query `auth_login:admit` (see *Consumes*) with
 | `register` | `POST /api/v1/users/create`                                                      |
 | `setup`    | `POST /api/v1/dev/setup`                                                         |
 | `provider` | `GET /api/v1/{provider}/login` and its callback, unless they carry an app ticket |
-| `app-sso`  | `POST /api/v1/{provider}/app` and `POST /api/v1/{provider}/app/exchange`         |
+| `app-provider` | `POST /api/v1/{provider}/app` and `POST /api/v1/{provider}/app/exchange`     |
 | `device`   | `POST /api/v1/mobile/login`                                                      |
 
 A handler answers `null` (or `true`) to admit, or a refusal code
@@ -350,7 +350,7 @@ gate nothing can open. The same fallback applies to registration.
 - **POST /api/v1/users/reset** — sets the new password (rate-limited 10/hour).
   Request: `ResetPassword`. CSRF-protected.
 
-## OAuth / SSO
+## OAuth providers
 
 Provider-driven sign-in and account linking. `{provider}` selects the OAuth
 provider.
@@ -369,19 +369,19 @@ the sign-in in the system browser and receives a single-use code on a private-us
 redirect it registered, bound to a PKCE verifier only the app holds (RFC 7636).
 The browser itself is never signed in.
 
-- **POST /api/v1/{provider}/app** — `SsoAppStart` (`redirect`, `challenge`;
+- **POST /api/v1/{provider}/app** — `ProviderAppStart` (`redirect`, `challenge`;
   rate-limited 10/minute). `challenge` is the base64url SHA-256 of the app's
   verifier (43 characters). `redirect` must be listed exactly in
-  `AUTH_SSO_APP_REDIRECTS` (default `[]`, which turns the flow off). Answers
-  `{ "ticket", "url", "expires" }`; the ticket lives `AUTH_SSO_APP_TTL` seconds
-  (600). `400 SSO_APP_DISABLED`, `400 INVALID_REDIRECT`,
+  `AUTH_PROVIDER_APP_REDIRECTS` (default `[]`, which turns the flow off). Answers
+  `{ "ticket", "url", "expires" }`; the ticket lives `AUTH_PROVIDER_APP_TTL` seconds
+  (600). `400 PROVIDER_APP_DISABLED`, `400 INVALID_REDIRECT`,
   `400 INVALID_CODE_CHALLENGE`, `400 UNKNOWN_PROVIDER`.
 - **GET /api/v1/{provider}/login?device=mobile&app=<ticket>** — the `url` the app
-  opens in the system browser. `400 SSO_APP_EXPIRED` for an unknown or expired
+  opens in the system browser. `400 PROVIDER_APP_EXPIRED` for an unknown or expired
   ticket. After the provider, the callback does not sign the browser in: it
   consumes the ticket, issues a code that is valid for 120 seconds and redirects
   (`303`) to `<redirect>?code=…&ticket=…`.
-- **POST /api/v1/{provider}/app/exchange** — `SsoAppExchange` (`code`,
+- **POST /api/v1/{provider}/app/exchange** — `ProviderAppExchange` (`code`,
   `verifier`; rate-limited 20/minute), sent by the app's own HTTP client. The code
   is consumed before it is checked, so a wrong verifier burns it; the SHA-256 of
   `verifier` must equal the challenge (`400 INVALID_CODE` otherwise). On success
@@ -666,7 +666,9 @@ Endpoints for managing users, roles, and permissions. Every route requires
 ### Users — grant `users:read` / `users:write`
 
 - **POST /api/v1/admin/users** (`users:write`) — create a user (`CreateUser`).
-- **GET /api/v1/admin/users** (`users:read`) — list users (`AdminUserResponse[]`).
+- **GET /api/v1/admin/users** (`users:read`) — list users (`AdminUserResponse[]`:
+  `id`, `username`, `email`, `email_verified`, `is_admin`, `has_2fa`, `providers` — the sorted names
+  of the OAuth providers linked to the account — and `roles`).
 - **GET /api/v1/admin/users/{user_id}** (`users:read`) — one user
   (`AdminUserResponse`).
 - **PATCH /api/v1/admin/users/{user_id}** (`users:write`) — update

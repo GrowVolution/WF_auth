@@ -219,9 +219,9 @@
     "Too many requests",
     "Zu viele Anfragen"
   ],
-  "SSO_APP_DISABLED": [
-    "Single sign-on is not set up for apps",
-    "Single Sign-On ist für Apps nicht eingerichtet"
+  "PROVIDER_APP_DISABLED": [
+    "Signing in with a provider is not set up for apps",
+    "Die Anmeldung über einen Anbieter ist für Apps nicht eingerichtet"
   ],
   "INVALID_REDIRECT": [
     "This app is not allowed to receive sign-ins",
@@ -231,7 +231,7 @@
     "Invalid sign-in request",
     "Ungültige Anmeldeanfrage"
   ],
-  "SSO_APP_EXPIRED": [
+  "PROVIDER_APP_EXPIRED": [
     "The sign-in has expired. Please start again in the app.",
     "Die Anmeldung ist abgelaufen. Bitte starte sie in der App erneut."
   ],

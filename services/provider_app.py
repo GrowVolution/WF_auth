@@ -16,7 +16,7 @@ _VERIFIER = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 _exchange = asyncio.Lock()
 
 
-class SsoAppError(ValueError):
+class ProviderAppError(ValueError):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
@@ -24,16 +24,16 @@ class SsoAppError(ValueError):
 
 def _key(kind: str, value: str) -> str:
     from .. import additive
-    return f"{additive.id}:sso:app:{kind}:{value}"
+    return f"{additive.id}:provider:app:{kind}:{value}"
 
 
 def redirects() -> list[str]:
-    configured = FluidContext.current().fluid.config.get("AUTH_SSO_APP_REDIRECTS") or []
+    configured = FluidContext.current().fluid.config.get("AUTH_PROVIDER_APP_REDIRECTS") or []
     return [value for value in configured if isinstance(value, str) and value]
 
 
 def ttl() -> int:
-    return int(FluidContext.current().fluid.config.get("AUTH_SSO_APP_TTL") or 600)
+    return int(FluidContext.current().fluid.config.get("AUTH_PROVIDER_APP_TTL") or 600)
 
 
 def challenge_of(verifier: str) -> str:
@@ -53,10 +53,10 @@ async def _load(key: str) -> Optional[dict]:
 
 async def open_ticket(provider: str, redirect: str, challenge: str) -> tuple[str, int]:
     allowed = redirects()
-    if not allowed: raise SsoAppError("SSO_APP_DISABLED")
-    if redirect not in allowed: raise SsoAppError("INVALID_REDIRECT")
+    if not allowed: raise ProviderAppError("PROVIDER_APP_DISABLED")
+    if redirect not in allowed: raise ProviderAppError("INVALID_REDIRECT")
     if not isinstance(challenge, str) or not _CHALLENGE.match(challenge):
-        raise SsoAppError("INVALID_CODE_CHALLENGE")
+        raise ProviderAppError("INVALID_CODE_CHALLENGE")
 
     lifetime = ttl()
     ticket = secrets.token_urlsafe(24)
@@ -77,7 +77,7 @@ async def ticket(provider: str, value) -> Optional[dict]:
 
 async def issue(provider: str, value: str, user_id: int, existing: bool) -> str:
     state = await ticket(provider, value)
-    if not state: raise SsoAppError("SSO_APP_EXPIRED")
+    if not state: raise ProviderAppError("PROVIDER_APP_EXPIRED")
     await cache.adelete(_key("ticket", value))
 
     code = secrets.token_urlsafe(32)
@@ -91,15 +91,15 @@ async def issue(provider: str, value: str, user_id: int, existing: bool) -> str:
 
 
 async def redeem(provider: str, code, verifier) -> dict:
-    if not isinstance(code, str) or not _CODE.match(code): raise SsoAppError("INVALID_CODE")
-    if not isinstance(verifier, str) or not _VERIFIER.match(verifier): raise SsoAppError("INVALID_CODE")
+    if not isinstance(code, str) or not _CODE.match(code): raise ProviderAppError("INVALID_CODE")
+    if not isinstance(verifier, str) or not _VERIFIER.match(verifier): raise ProviderAppError("INVALID_CODE")
 
     async with _exchange:
         key = _key("code", code)
         state = await _load(key)
         await cache.adelete(key)
 
-    if not state or state.get("provider") != provider: raise SsoAppError("INVALID_CODE")
+    if not state or state.get("provider") != provider: raise ProviderAppError("INVALID_CODE")
     if not hmac.compare_digest(challenge_of(verifier), str(state.get("challenge"))):
-        raise SsoAppError("INVALID_CODE")
+        raise ProviderAppError("INVALID_CODE")
     return state

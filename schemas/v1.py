@@ -53,12 +53,12 @@ class LoginUser(BaseModel):
     password: str
 
 
-class SsoAppStart(BaseModel):
+class ProviderAppStart(BaseModel):
     redirect: str
     challenge: str
 
 
-class SsoAppExchange(BaseModel):
+class ProviderAppExchange(BaseModel):
     code: str
     verifier: str
 
@@ -127,7 +127,7 @@ class AdminUserResponse(BaseModel):
     email_verified: bool
     is_admin: bool
     has_2fa: bool
-    sso: bool
+    providers: list[str]
     roles: list[str]
 
 

@@ -28,7 +28,7 @@ async def _serialize(user: User) -> dict:
         "email_verified": user.email_verified,
         "is_admin": await s.user_service.is_admin(user),
         "has_2fa": s.user_service.has_2fa(user),
-        "sso": any(i.provider == "sso" for i in user.identities),
+        "providers": sorted({ i.provider for i in user.identities }),
         "roles": [role.name for role in user.roles]
     }
 

@@ -34,12 +34,12 @@ def setup(a: "Additive", f: "Fluid"):
         name=a.unique_name("oauth_callback")
     )(oauth_callback)
 
-    from .sso_app import (
-        start_request as sso_app_start,
-        exchange_request as sso_app_exchange
+    from .provider_app import (
+        start_request as provider_app_start,
+        exchange_request as provider_app_exchange
     )
-    v1.post("/{provider}/app")(f.limit("10/minute")(sso_app_start))
-    v1.post("/{provider}/app/exchange")(f.limit("20/minute")(sso_app_exchange))
+    v1.post("/{provider}/app")(f.limit("10/minute")(provider_app_start))
+    v1.post("/{provider}/app/exchange")(f.limit("20/minute")(provider_app_exchange))
 
     from .logout import (
         default_request as logout_user
